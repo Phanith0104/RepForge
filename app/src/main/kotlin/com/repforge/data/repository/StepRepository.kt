@@ -38,19 +38,29 @@ class StepRepository @Inject constructor(
             }
         }
 
-        val baseSteps = prefs.getInt("sensor_base_steps", sensorSteps)
+        var baseSteps = prefs.getInt("sensor_base_steps", sensorSteps)
+        
+        // Reboot detection: If current sensor value is less than the base, 
+        // the sensor has likely reset (e.g., due to a device reboot).
+        if (sensorSteps < baseSteps) {
+            baseSteps = 0
+            prefs.edit().putInt("sensor_base_steps", 0).apply()
+        }
+
         val todayCount = (sensorSteps - baseSteps).coerceAtLeast(0)
 
-        // Achievement Logic: Check if today's steps cross Personal Best
+        // Achievement Logic:
         val personalBest = stepDao.getPersonalBestExcludingToday(today) ?: 0
-        val isAchievement = todayCount > personalBest && todayCount > 0
+        val yesterday = getYesterdayDate()
+        val yesterdayEntry = stepDao.getStepsForDate(yesterday)
+        val yesterdayCount = yesterdayEntry?.count ?: 0
+        
+        val isAchievement = (todayCount > personalBest || todayCount > yesterdayCount) && todayCount > 0
 
         // Streak Logic
         val newStreak = if (todayCount >= 10000) {
-            val yesterday = getYesterdayDate()
-            val yesterdayEntry = stepDao.getStepsForDate(yesterday)
-            if (yesterdayEntry != null && yesterdayEntry.count >= 10000) {
-                yesterdayEntry.streak + 1
+            if (yesterdayCount >= 10000) {
+                (yesterdayEntry?.streak ?: 0) + 1
             } else {
                 1
             }

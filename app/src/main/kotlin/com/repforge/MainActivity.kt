@@ -41,37 +41,33 @@ class MainActivity : ComponentActivity() {
         setContent {
             RepForgeTheme {
                 val context = LocalContext.current
+                val permissionsToRequest = mutableListOf<String>().apply {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        add(Manifest.permission.ACTIVITY_RECOGNITION)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        add(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
+
                 val permissionLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.RequestPermission()
-                ) { isGranted ->
-                    if (isGranted) {
+                    ActivityResultContracts.RequestMultiplePermissions()
+                ) { permissions ->
+                    val allGranted = permissions.values.all { it }
+                    if (allGranted) {
                         context.startForegroundService(Intent(context, StepCounterService::class.java))
                     }
                 }
 
                 LaunchedEffect(Unit) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        if (ContextCompat.checkSelfPermission(
-                                context,
-                                Manifest.permission.ACTIVITY_RECOGNITION
-                            ) != PackageManager.PERMISSION_GRANTED
-                        ) {
-                            permissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
-                        } else {
-                            context.startForegroundService(
-                                Intent(
-                                    context,
-                                    StepCounterService::class.java
-                                )
-                            )
-                        }
+                    val needsRequest = permissionsToRequest.any {
+                        ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+                    }
+
+                    if (needsRequest) {
+                        permissionLauncher.launch(permissionsToRequest.toTypedArray())
                     } else {
-                        context.startForegroundService(
-                            Intent(
-                                context,
-                                StepCounterService::class.java
-                            )
-                        )
+                        context.startForegroundService(Intent(context, StepCounterService::class.java))
                     }
                 }
 
