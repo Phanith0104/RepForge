@@ -17,4 +17,7 @@ interface StepDao {
     
     @Query("SELECT * FROM steps ORDER BY date DESC")
     fun getAllSteps(): Flow<List<StepEntity>>
+
+    @Query("SELECT MAX(count) FROM steps WHERE date != :today")
+    suspend fun getPersonalBestExcludingToday(today: String): Int?
 }

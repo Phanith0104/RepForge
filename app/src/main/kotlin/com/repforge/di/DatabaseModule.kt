@@ -23,7 +23,9 @@ object DatabaseModule {
             context,
             RepForgeDatabase::class.java,
             "repforge_db"
-        ).build()
+        )
+            .fallbackToDestructiveMigration(true)
+            .build()
     }
 
     @Provides

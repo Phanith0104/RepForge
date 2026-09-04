@@ -7,7 +7,7 @@ import com.repforge.data.local.dao.WorkoutDao
 import com.repforge.data.local.entities.StepEntity
 import com.repforge.data.local.entities.WorkoutEntity
 
-@Database(entities = [StepEntity::class, WorkoutEntity::class], version = 1, exportSchema = false)
+@Database(entities = [StepEntity::class, WorkoutEntity::class], version = 2, exportSchema = false)
 abstract class RepForgeDatabase : RoomDatabase() {
     abstract fun stepDao(): StepDao
     abstract fun workoutDao(): WorkoutDao

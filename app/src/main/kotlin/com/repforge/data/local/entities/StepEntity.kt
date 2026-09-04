@@ -7,5 +7,6 @@ import androidx.room.PrimaryKey
 data class StepEntity(
     @PrimaryKey val date: String, // format: YYYY-MM-DD
     val count: Int,
-    val streak: Int = 0
+    val streak: Int = 0,
+    val isAchievement: Boolean = false
 )
