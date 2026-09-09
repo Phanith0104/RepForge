@@ -21,6 +21,14 @@ val CHEST_EXERCISES = listOf(
         MuscleGroup.CHEST,
         "Upper Chest"
     ),
+    Exercise(
+        "Low-to-High Cable Flys",
+        "https://placehold.co/600x400/00A3FF/white?text=Cable+Flys",
+        "Incline Dumbbell Flys",
+        "Targets the upper chest and inner pec line.",
+        MuscleGroup.CHEST,
+        "Upper Chest"
+    ),
     // Middle Chest
     Exercise(
         "Flat Barbell Bench Press",
@@ -35,6 +43,22 @@ val CHEST_EXERCISES = listOf(
         "https://placehold.co/600x400/00A3FF/white?text=Machine+Press",
         "Hammer Strength Press / Floor Press",
         "Provides stability to focus purely on the chest contraction.",
+        MuscleGroup.CHEST,
+        "Middle Chest"
+    ),
+    Exercise(
+        "Dumbbell Bench Press",
+        "https://placehold.co/600x400/00A3FF/white?text=DB+Bench",
+        "Flat Barbell Press",
+        "Allows for a greater range of motion than the barbell.",
+        MuscleGroup.CHEST,
+        "Middle Chest"
+    ),
+    Exercise(
+        "Floor Press",
+        "https://placehold.co/600x400/00A3FF/white?text=Floor+Press",
+        "Board Press",
+        "Builds explosive power and hits the middle chest/triceps.",
         MuscleGroup.CHEST,
         "Middle Chest"
     ),
@@ -54,5 +78,22 @@ val CHEST_EXERCISES = listOf(
         "Lean forward to emphasize the lower chest fibers.",
         MuscleGroup.CHEST,
         "Lower Chest"
+    ),
+    Exercise(
+        "Dumbbell Pullovers",
+        "https://placehold.co/600x400/00A3FF/white?text=Pullovers",
+        "Cable Pullovers",
+        "Expands the ribcage and hits the lower chest/serratus.",
+        MuscleGroup.CHEST,
+        "Lower Chest"
+    ),
+    Exercise(
+        "High-to-Low Cable Flys",
+        "https://placehold.co/600x400/00A3FF/white?text=Lower+Cable+Fly",
+        "Decline DB Flys",
+        "Excellent isolation for the lower pectoral fibers.",
+        MuscleGroup.CHEST,
+        "Lower Chest"
     )
 )
+

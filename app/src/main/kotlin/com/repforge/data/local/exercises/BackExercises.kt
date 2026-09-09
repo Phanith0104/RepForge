@@ -21,6 +21,22 @@ val BACK_EXERCISES = listOf(
         MuscleGroup.BACK,
         "Lats"
     ),
+    Exercise(
+        "Wide Grip Pull Ups",
+        "https://placehold.co/600x400/00A3FF/white?text=Pull+Ups",
+        "Lat Pulldowns",
+        "The best bodyweight movement for lat width.",
+        MuscleGroup.BACK,
+        "Lats"
+    ),
+    Exercise(
+        "Single Arm Lat Pulldowns",
+        "https://placehold.co/600x400/00A3FF/white?text=Single+Lat",
+        "Dumbbell Pullovers",
+        "Better mind-muscle connection for the lats.",
+        MuscleGroup.BACK,
+        "Lats"
+    ),
     // Middle Back (Thickness)
     Exercise(
         "One Arm Dumbbell Rows",
@@ -35,6 +51,22 @@ val BACK_EXERCISES = listOf(
         "https://placehold.co/600x400/00A3FF/white?text=Cable+Rows",
         "Bent Over Barbell Rows",
         "Builds thick middle back and rhomboids.",
+        MuscleGroup.BACK,
+        "Middle Back"
+    ),
+    Exercise(
+        "T-Bar Rows",
+        "https://placehold.co/600x400/00A3FF/white?text=T-Bar+Rows",
+        "Bent Over Barbell Rows",
+        "Builds massive thickness in the middle back.",
+        MuscleGroup.BACK,
+        "Middle Back"
+    ),
+    Exercise(
+        "Bent Over Barbell Rows",
+        "https://placehold.co/600x400/00A3FF/white?text=Barbell+Row",
+        "Pendlay Rows / Seated Rows",
+        "Fundamental mass builder for the entire back.",
         MuscleGroup.BACK,
         "Middle Back"
     ),
@@ -55,6 +87,14 @@ val BACK_EXERCISES = listOf(
         MuscleGroup.BACK,
         "Upper Back"
     ),
+    Exercise(
+        "Rear Delt Flys",
+        "https://placehold.co/600x400/00A3FF/white?text=Rear+Delt+Fly",
+        "Face Pulls",
+        "Isolates the posterior deltoids and upper back.",
+        MuscleGroup.BACK,
+        "Upper Back"
+    ),
     // Lower Back
     Exercise(
         "Deadlift (Conventional)",
@@ -71,5 +111,14 @@ val BACK_EXERCISES = listOf(
         "Isolates the spinal erectors safely.",
         MuscleGroup.BACK,
         "Lower Back"
+    ),
+    Exercise(
+        "Good Mornings",
+        "https://placehold.co/600x400/00A3FF/white?text=Good+Morning",
+        "Hyperextensions",
+        "Builds strong spinal erectors and hamstrings.",
+        MuscleGroup.BACK,
+        "Lower Back"
     )
 )
+

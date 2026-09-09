@@ -4,10 +4,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.ui.graphics.vector.ImageVector
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
+    object Login : Screen("login", "Login", Icons.Default.Person)
     object StepCounter : Screen("step_counter", "Steps", Icons.Default.DirectionsRun)
     object GymTracker : Screen("gym_tracker", "Gym", Icons.Default.FitnessCenter)
     object Calisthenics : Screen("calisthenics", "Calisthenics", Icons.Default.List)
+    object Profile : Screen("profile", "Profile", Icons.Default.Person)
 }

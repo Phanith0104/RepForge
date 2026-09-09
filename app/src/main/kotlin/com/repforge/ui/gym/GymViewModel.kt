@@ -11,7 +11,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -20,16 +20,38 @@ import javax.inject.Inject
 
 @HiltViewModel
 class GymViewModel @Inject constructor(
-    private val workoutDao: WorkoutDao
+    private val workoutDao: WorkoutDao,
 ) : ViewModel() {
 
-    private val allExercises = CHEST_EXERCISES + BACK_EXERCISES + ARM_EXERCISES + SHOULDER_LEG_ABS_EXERCISES
+    sealed class GymNavState {
+        object MuscleGroups : GymNavState()
+        data class SubCategories(val muscleGroup: MuscleGroup) : GymNavState()
+        data class Exercises(val muscleGroup: MuscleGroup, val subCategory: String) : GymNavState()
+    }
 
-    private val _selectedCategory = MutableStateFlow(MuscleGroup.CHEST)
-    val selectedCategory: StateFlow<MuscleGroup> = _selectedCategory
+    private val allExercisesList = CHEST_EXERCISES + BACK_EXERCISES + BICEP_EXERCISES + 
+            TRICEP_EXERCISES + FOREARM_EXERCISES + SHOULDER_EXERCISES + LEG_EXERCISES + ABS_EXERCISES
 
-    val exercises: StateFlow<List<Exercise>> = _selectedCategory.combine(MutableStateFlow(allExercises)) { category, exercises ->
-        exercises.filter { it.muscleGroup == category }
+    private val _navState = MutableStateFlow<GymNavState>(GymNavState.MuscleGroups)
+    val navState: StateFlow<GymNavState> = _navState
+
+    val currentExercises: StateFlow<List<Exercise>> = _navState.map { state ->
+        when (state) {
+            is GymNavState.Exercises -> allExercisesList.filter { 
+                it.muscleGroup == state.muscleGroup && it.subCategory == state.subCategory 
+            }
+            else -> emptyList()
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val subCategories: StateFlow<List<String>> = _navState.map { state ->
+        when (state) {
+            is GymNavState.SubCategories -> allExercisesList
+                .filter { it.muscleGroup == state.muscleGroup }
+                .map { it.subCategory }
+                .distinct()
+            else -> emptyList()
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val workoutLogs: StateFlow<List<WorkoutEntity>> = workoutDao.getAllWorkoutLogs()
@@ -39,8 +61,20 @@ class GymViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
-    fun selectCategory(category: MuscleGroup) {
-        _selectedCategory.value = category
+    fun navigateToSubCategories(muscleGroup: MuscleGroup) {
+        _navState.value = GymNavState.SubCategories(muscleGroup)
+    }
+
+    fun navigateToExercises(muscleGroup: MuscleGroup, subCategory: String) {
+        _navState.value = GymNavState.Exercises(muscleGroup, subCategory)
+    }
+
+    fun navigateBack() {
+        _navState.value = when (val current = _navState.value) {
+            is GymNavState.Exercises -> GymNavState.SubCategories(current.muscleGroup)
+            is GymNavState.SubCategories -> GymNavState.MuscleGroups
+            else -> GymNavState.MuscleGroups
+        }
     }
 
     fun logWorkout(exerciseName: String, sets: Int, reps: Int, weight: Float?) {

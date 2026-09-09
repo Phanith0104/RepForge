@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.repforge.data.local.RepForgeDatabase
 import com.repforge.data.local.dao.StepDao
+import com.repforge.data.local.dao.UserDao
 import com.repforge.data.local.dao.WorkoutDao
 import dagger.Module
 import dagger.Provides
@@ -36,5 +37,10 @@ object DatabaseModule {
     @Provides
     fun provideWorkoutDao(database: RepForgeDatabase): WorkoutDao {
         return database.workoutDao()
+    }
+
+    @Provides
+    fun provideUserDao(database: RepForgeDatabase): UserDao {
+        return database.userDao()
     }
 }

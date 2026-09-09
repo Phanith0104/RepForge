@@ -28,19 +28,29 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.SideEffect
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.repforge.stepcounter.StepCounterService
+import com.repforge.ui.auth.AuthViewModel
+import com.repforge.ui.auth.LoginScreen
+import com.repforge.ui.profile.ProfileScreen
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             RepForgeTheme {
                 val context = LocalContext.current
+                val authViewModel: AuthViewModel = hiltViewModel()
+                val userState by authViewModel.user.collectAsState()
+
                 val permissionsToRequest = mutableListOf<String>().apply {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         add(Manifest.permission.ACTIVITY_RECOGNITION)
@@ -51,36 +61,46 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val permissionLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.RequestMultiplePermissions()
+                    ActivityResultContracts.RequestMultiplePermissions(),
                 ) { permissions ->
-                    val allGranted = permissions.values.all { it }
-                    if (allGranted) {
+                    val activityGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        permissions[Manifest.permission.ACTIVITY_RECOGNITION] == true
+                    } else true
+                    
+                    if (activityGranted) {
                         context.startForegroundService(Intent(context, StepCounterService::class.java))
                     }
                 }
 
-                LaunchedEffect(Unit) {
-                    val needsRequest = permissionsToRequest.any {
-                        ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
-                    }
+                LaunchedEffect(userState?.isProfileComplete) {
+                    if (userState?.isProfileComplete == true) {
+                        val needsRequest = permissionsToRequest.any {
+                            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+                        }
 
-                    if (needsRequest) {
-                        permissionLauncher.launch(permissionsToRequest.toTypedArray())
-                    } else {
-                        context.startForegroundService(Intent(context, StepCounterService::class.java))
+                        if (needsRequest) {
+                            permissionLauncher.launch(permissionsToRequest.toTypedArray())
+                        } else {
+                            context.startForegroundService(Intent(context, StepCounterService::class.java))
+                        }
                     }
                 }
 
-                MainScreen()
+                if (userState?.isProfileComplete == true) {
+                    MainScreen()
+                } else {
+                    LoginScreen()
+                }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen() {
     val navController = rememberNavController()
-    val screens = listOf(Screen.StepCounter, Screen.GymTracker, Screen.Calisthenics)
+    val screens = listOf(Screen.StepCounter, Screen.GymTracker, Screen.Calisthenics, Screen.Profile)
 
     Scaffold(
         bottomBar = {
@@ -119,6 +139,9 @@ fun MainScreen() {
             }
             composable(Screen.Calisthenics.route) { 
                 CalisthenicsScreen() 
+            }
+            composable(Screen.Profile.route) {
+                ProfileScreen()
             }
         }
     }

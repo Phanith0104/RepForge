@@ -19,94 +19,165 @@ import coil.compose.AsyncImage
 import com.repforge.domain.model.Exercise
 import com.repforge.domain.model.MuscleGroup
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Folder
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GymTrackerScreen(viewModel: GymViewModel = hiltViewModel()) {
-    var showDialog by remember { mutableStateOf(false) }
+    var showLogDialog by remember { mutableStateOf(false) }
     var selectedExercise by remember { mutableStateOf<Exercise?>(null) }
+    
+    val navState by viewModel.navState.collectAsState()
+    val subCategories by viewModel.subCategories.collectAsState()
+    val exercises by viewModel.currentExercises.collectAsState()
     val workoutLogs by viewModel.workoutLogs.collectAsState()
-    val exercises by viewModel.exercises.collectAsState()
-    val selectedCategory by viewModel.selectedCategory.collectAsState()
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Text(
-            text = "Gym Tracker",
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(16.dp),
-            color = MaterialTheme.colorScheme.primary
-        )
+    BackHandler(enabled = navState !is GymViewModel.GymNavState.MuscleGroups) {
+        viewModel.navigateBack()
+    }
 
-        ScrollableTabRow(
-            selectedTabIndex = MuscleGroup.entries.indexOf(selectedCategory),
-            edgePadding = 16.dp,
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.primary,
-            divider = {}
-        ) {
-            MuscleGroup.entries.forEach { category ->
-                Tab(
-                    selected = selectedCategory == category,
-                    onClick = { viewModel.selectCategory(category) },
-                    text = { Text(category.displayName) }
-                )
-            }
-        }
-
-        LazyColumn(modifier = Modifier.weight(1f)) {
-            item {
-                Text(
-                    text = "${selectedCategory.displayName} Exercises",
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
-            
-            // Group by sub-category
-            val groupedExercises = exercises.groupBy { it.subCategory }
-            
-            groupedExercises.forEach { (subCategory, subExercises) ->
-                item {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
                     Text(
-                        text = subCategory,
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        color = MaterialTheme.colorScheme.secondary
+                        text = when (val state = navState) {
+                            is GymViewModel.GymNavState.MuscleGroups -> "Gym Tracker"
+                            is GymViewModel.GymNavState.SubCategories -> state.muscleGroup.displayName
+                            is GymViewModel.GymNavState.Exercises -> state.subCategory
+                        }
+                    )
+                },
+                navigationIcon = {
+                    if (navState !is GymViewModel.GymNavState.MuscleGroups) {
+                        IconButton(onClick = { viewModel.navigateBack() }) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        }
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            when (val state = navState) {
+                is GymViewModel.GymNavState.MuscleGroups -> {
+                    MuscleGroupList(onCategoryClick = { viewModel.navigateToSubCategories(it) })
+                }
+                is GymViewModel.GymNavState.SubCategories -> {
+                    FolderList(
+                        items = subCategories,
+                        onItemClick = { viewModel.navigateToExercises(state.muscleGroup, it) }
                     )
                 }
-                items(subExercises) { exercise ->
-                    ExerciseCard(
-                        exercise = exercise,
-                        onLogClick = {
-                            selectedExercise = exercise
-                            showDialog = true
+                is GymViewModel.GymNavState.Exercises -> {
+                    ExerciseList(
+                        exercises = exercises,
+                        onExerciseClick = {
+                            selectedExercise = it
+                            showLogDialog = true
                         }
                     )
                 }
             }
 
-            if (workoutLogs.isNotEmpty()) {
-                item {
-                    Text(
-                        text = "Recent Activity",
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.padding(16.dp)
-                    )
-                }
-                items(workoutLogs) { log ->
-                    LogCard(log)
+            if (navState is GymViewModel.GymNavState.MuscleGroups && workoutLogs.isNotEmpty()) {
+                Text(
+                    text = "Recent Activity",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(16.dp)
+                )
+                LazyColumn(modifier = Modifier.weight(1f)) {
+                    items(workoutLogs) { log ->
+                        LogCard(log)
+                    }
                 }
             }
         }
     }
 
-    if (showDialog && selectedExercise != null) {
+    if (showLogDialog && selectedExercise != null) {
         WorkoutEntryDialog(
             exercise = selectedExercise!!,
-            onDismiss = { showDialog = false },
+            onDismiss = { showLogDialog = false },
             onConfirm = { sets, reps, weight ->
                 viewModel.logWorkout(selectedExercise!!.name, sets, reps, weight)
-                showDialog = false
+                showLogDialog = false
             }
         )
+    }
+}
+
+@Composable
+fun MuscleGroupList(onCategoryClick: (MuscleGroup) -> Unit) {
+    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+        items(MuscleGroup.entries) { group ->
+            FolderItem(
+                title = group.displayName,
+                onClick = { onCategoryClick(group) }
+            )
+        }
+    }
+}
+
+@Composable
+fun FolderList(items: List<String>, onItemClick: (String) -> Unit) {
+    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+        items(items) { item ->
+            FolderItem(
+                title = item,
+                onClick = { onItemClick(item) }
+            )
+        }
+    }
+}
+
+@Composable
+fun FolderItem(title: String, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Folder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(text = title, style = MaterialTheme.typography.bodyLarge)
+            }
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = androidx.compose.ui.graphics.Color.Gray
+            )
+        }
+    }
+    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+}
+
+@Composable
+fun ExerciseList(exercises: List<Exercise>, onExerciseClick: (Exercise) -> Unit) {
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        items(exercises) { exercise ->
+            ExerciseCard(exercise = exercise, onLogClick = { onExerciseClick(exercise) })
+        }
     }
 }
 
