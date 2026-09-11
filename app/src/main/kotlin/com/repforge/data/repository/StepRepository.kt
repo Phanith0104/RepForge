@@ -20,6 +20,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration.Companion.minutes
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
 @Singleton
 class StepRepository @Inject constructor(
     private val stepDao: StepDao,
@@ -27,6 +30,7 @@ class StepRepository @Inject constructor(
 ) {
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
     private val prefs = context.getSharedPreferences("step_prefs", Context.MODE_PRIVATE)
+    private val mutex = Mutex()
 
     private val dateFlow = flow {
         while (true) {
@@ -55,7 +59,7 @@ class StepRepository @Inject constructor(
         prefs.edit { putInt("step_goal", goal) }
     }
 
-    suspend fun updateSteps(sensorSteps: Int): Int {
+    suspend fun updateSteps(sensorSteps: Int): Int = mutex.withLock {
         val today = getTodayDate()
         val lastUpdateDate = prefs.getString("last_update_date", "")
         val lastSensorValue = prefs.getInt("last_sensor_value", sensorSteps)
@@ -123,10 +127,10 @@ class StepRepository @Inject constructor(
                 isAchievement = isAchievement
             )
         )
-        return todayCount
+        return@withLock todayCount
     }
 
-    suspend fun incrementStepManually(): Int {
+    suspend fun incrementStepManually(): Int = mutex.withLock {
         val today = getTodayDate()
         val currentEntry = stepDao.getStepsForDate(today)
         val newCount = (currentEntry?.count ?: 0) + 1
@@ -160,9 +164,8 @@ class StepRepository @Inject constructor(
                 isAchievement = isAchievement
             )
         )
-        return newCount
+        return@withLock newCount
     }
-
     private fun getYesterdayDate(): String = LocalDate.now().minusDays(1).format(dateFormatter)
 
     fun getAllStepHistory(): Flow<List<StepEntity>> = stepDao.getAllSteps()

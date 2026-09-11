@@ -36,7 +36,8 @@ class StepCounterService : Service(), SensorEventListener {
 
     // Accelerometer variables for fallback
     private var isPeak = false
-    private val stepThreshold = 12f // Sensitivity for fallback
+    private val stepThreshold = 13.5f // Magnitude threshold
+    private var lastMagnitude = 0f
 
     override fun onCreate() {
         super.onCreate()
@@ -98,17 +99,23 @@ class StepCounterService : Service(), SensorEventListener {
                 updateNotification(todaySteps)
             }
         } else if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
-            // Simple peak-detection fallback for devices without hardware sensors
+            // Magnitude-based peak detection fallback
+            val x = event.values[0]
             val y = event.values[1]
-            if (y > stepThreshold && !isPeak) {
+            val z = event.values[2]
+            
+            val magnitude = kotlin.math.sqrt(x * x + y * y + z * z)
+            
+            if (magnitude > stepThreshold && !isPeak && magnitude > lastMagnitude) {
                 isPeak = true
                 serviceScope.launch {
                     val currentSteps = repository.incrementStepManually()
                     updateNotification(currentSteps)
                 }
-            } else if (y < (stepThreshold - 2f)) {
+            } else if (magnitude < stepThreshold - 1f) {
                 isPeak = false
             }
+            lastMagnitude = magnitude
         }
     }
 

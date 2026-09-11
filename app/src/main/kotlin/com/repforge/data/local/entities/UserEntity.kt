@@ -12,6 +12,10 @@ data class UserEntity(
     val phoneNumber: String = "",
     val weight: Float = 0f,
     val height: Float = 0f,
+    val photoUrl: String? = null,
+    val provider: String = "email",
+    val lastLogin: Long = System.currentTimeMillis(),
     val isLoggedIn: Boolean = false,
-    val isProfileComplete: Boolean = false
+    val isProfileComplete: Boolean = false,
+    val isGuest: Boolean = false
 )
