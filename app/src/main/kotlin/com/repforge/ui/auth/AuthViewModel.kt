@@ -41,10 +41,13 @@ class AuthViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            _isLoading.value = true
             try {
                 userRepository.syncUserFromFirebase()
             } catch (e: Exception) {
                 _error.value = "Session recovery failed: ${e.message}"
+            } finally {
+                _isLoading.value = false
             }
         }
     }
@@ -156,6 +159,19 @@ class AuthViewModel @Inject constructor(
                 userRepository.logout()
             } catch (e: Exception) {
                 _error.value = "Logout failed: ${e.message}"
+            }
+        }
+    }
+
+    fun refresh() {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                userRepository.syncUserFromFirebase()
+            } catch (e: Exception) {
+                _error.value = "Refresh failed: ${e.message}"
+            } finally {
+                _isLoading.value = false
             }
         }
     }

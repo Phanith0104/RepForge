@@ -3,9 +3,7 @@ package com.repforge.di
 import android.content.Context
 import androidx.room.Room
 import com.repforge.data.local.RepForgeDatabase
-import com.repforge.data.local.dao.StepDao
-import com.repforge.data.local.dao.UserDao
-import com.repforge.data.local.dao.WorkoutDao
+import com.repforge.data.local.dao.*
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -30,17 +28,17 @@ object DatabaseModule {
     }
 
     @Provides
-    fun provideStepDao(database: RepForgeDatabase): StepDao {
-        return database.stepDao()
-    }
+    fun provideStepDao(database: RepForgeDatabase): StepDao = database.stepDao()
 
     @Provides
-    fun provideWorkoutDao(database: RepForgeDatabase): WorkoutDao {
-        return database.workoutDao()
-    }
+    fun provideWorkoutDao(database: RepForgeDatabase): WorkoutDao = database.workoutDao()
 
     @Provides
-    fun provideUserDao(database: RepForgeDatabase): UserDao {
-        return database.userDao()
-    }
+    fun provideUserDao(database: RepForgeDatabase): UserDao = database.userDao()
+
+    @Provides
+    fun provideCustomExerciseDao(database: RepForgeDatabase): CustomExerciseDao = database.customExerciseDao()
+
+    @Provides
+    fun provideWorkoutTemplateDao(database: RepForgeDatabase): WorkoutTemplateDao = database.workoutTemplateDao()
 }

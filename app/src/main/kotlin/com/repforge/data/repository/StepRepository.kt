@@ -6,13 +6,11 @@ import android.hardware.SensorManager
 import androidx.core.content.edit
 import com.repforge.data.local.dao.StepDao
 import com.repforge.data.local.entities.StepEntity
+import com.google.firebase.auth.FirebaseAuth
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.*
@@ -26,6 +24,7 @@ import kotlinx.coroutines.sync.withLock
 @Singleton
 class StepRepository @Inject constructor(
     private val stepDao: StepDao,
+    private val firebaseAuth: FirebaseAuth,
     @ApplicationContext private val context: Context
 ) {
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
@@ -39,6 +38,8 @@ class StepRepository @Inject constructor(
         }
     }.distinctUntilChanged()
 
+    private fun getCurrentUserId(): String = firebaseAuth.currentUser?.uid ?: "guest"
+
     fun getTodayDate(): String = LocalDate.now().format(dateFormatter)
 
     fun isStepCounterAvailable(): Boolean {
@@ -49,63 +50,64 @@ class StepRepository @Inject constructor(
     @OptIn(ExperimentalCoroutinesApi::class)
     fun getTodaySteps(): Flow<StepEntity?> {
         return dateFlow.flatMapLatest { today ->
-            stepDao.getStepsForDateFlow(today)
+            stepDao.getStepsForDateFlow(today, getCurrentUserId())
         }
     }
 
-    fun getStepGoal(): Int = prefs.getInt("step_goal", 10000)
+    fun getStepGoal(): Int = prefs.getInt("step_goal_${getCurrentUserId()}", 10000)
 
     fun updateStepGoal(goal: Int) {
-        prefs.edit { putInt("step_goal", goal) }
+        prefs.edit { putInt("step_goal_${getCurrentUserId()}", goal) }
     }
 
     suspend fun updateSteps(sensorSteps: Int): Int = mutex.withLock {
         val today = getTodayDate()
-        val lastUpdateDate = prefs.getString("last_update_date", "")
-        val lastSensorValue = prefs.getInt("last_sensor_value", sensorSteps)
+        val userId = getCurrentUserId()
+        val lastUpdateDate = prefs.getString("last_update_date_$userId", "")
+        val lastSensorValue = prefs.getInt("last_sensor_value_$userId", sensorSteps)
         val stepGoal = getStepGoal()
         
         // Detect Day Change or Reboot
         if (lastUpdateDate != today) {
             // New day: set the current sensor value as the base for today
             prefs.edit {
-                putInt("sensor_base_steps", sensorSteps)
-                putString("last_update_date", today)
-                putInt("last_sensor_value", sensorSteps)
+                putInt("sensor_base_steps_$userId", sensorSteps)
+                putString("last_update_date_$userId", today)
+                putInt("last_sensor_value_$userId", sensorSteps)
             }
         } else if (sensorSteps < lastSensorValue) {
             // Reboot detected
-            val currentEntry = stepDao.getStepsForDate(today)
+            val currentEntry = stepDao.getStepsForDate(today, userId)
             val todayCountBeforeReboot = currentEntry?.count ?: 0
             val newBase = sensorSteps - todayCountBeforeReboot
             
             prefs.edit {
-                putInt("sensor_base_steps", newBase)
-                putInt("last_sensor_value", sensorSteps)
+                putInt("sensor_base_steps_$userId", newBase)
+                putInt("last_sensor_value_$userId", sensorSteps)
             }
         } else {
             prefs.edit {
-                putInt("last_sensor_value", sensorSteps)
+                putInt("last_sensor_value_$userId", sensorSteps)
             }
         }
 
-        val baseSteps = prefs.getInt("sensor_base_steps", sensorSteps)
+        val baseSteps = prefs.getInt("sensor_base_steps_$userId", sensorSteps)
         val todayCount = (sensorSteps - baseSteps).coerceAtLeast(0)
 
         // Calculations
         val distanceKm = todayCount * 0.000762f // 0.762m avg stride
         val calories = (todayCount * 0.04f).toInt()
-        val activeMinutes = (todayCount / 80) // Slightly more realistic: ~80 steps/min
+        val activeTimeMinutes = (todayCount / 80)
 
         // Achievement Logic
-        val personalBest = stepDao.getPersonalBestExcludingToday(today) ?: 0
+        val personalBest = stepDao.getPersonalBestExcludingToday(today, userId) ?: 0
         val yesterday = getYesterdayDate()
-        val yesterdayEntry = stepDao.getStepsForDate(yesterday)
+        val yesterdayEntry = stepDao.getStepsForDate(yesterday, userId)
         val yesterdayCount = yesterdayEntry?.count ?: 0
         
         val isAchievement = (todayCount > personalBest || todayCount > yesterdayCount) && todayCount > 0
 
-        // Streak Logic
+        // Streak Logic: Strictly continuous.
         val newStreak = if (todayCount >= stepGoal) {
             if (yesterdayCount >= stepGoal) {
                 (yesterdayEntry?.streak ?: 0) + 1
@@ -119,10 +121,11 @@ class StepRepository @Inject constructor(
         stepDao.insertOrUpdateSteps(
             StepEntity(
                 date = today,
+                userId = userId,
                 count = todayCount,
                 distanceKm = distanceKm,
                 caloriesBurned = calories,
-                activeTimeMinutes = activeMinutes,
+                activeTimeMinutes = activeTimeMinutes,
                 streak = newStreak,
                 isAchievement = isAchievement
             )
@@ -132,41 +135,64 @@ class StepRepository @Inject constructor(
 
     suspend fun incrementStepManually(): Int = mutex.withLock {
         val today = getTodayDate()
-        val currentEntry = stepDao.getStepsForDate(today)
+        val userId = getCurrentUserId()
+        val currentEntry = stepDao.getStepsForDate(today, userId)
         val newCount = (currentEntry?.count ?: 0) + 1
         val stepGoal = getStepGoal()
         
-        // We use the same update logic but just increment by 1
-        // Note: For accelerometer fallback, baseSteps logic is skipped as we are counting increments.
-        
-        // Achievement & Streak Logic (Simplified for increment)
-        val personalBest = stepDao.getPersonalBestExcludingToday(today) ?: 0
+        val personalBest = stepDao.getPersonalBestExcludingToday(today, userId) ?: 0
         val yesterday = getYesterdayDate()
-        val yesterdayEntry = stepDao.getStepsForDate(yesterday)
-        val isAchievement = (newCount > personalBest || newCount > (yesterdayEntry?.count ?: 0)) && newCount > 0
+        val yesterdayEntry = stepDao.getStepsForDate(yesterday, userId)
+        val yesterdayCount = yesterdayEntry?.count ?: 0
+        
+        val isAchievement = (newCount > personalBest || newCount > yesterdayCount) && newCount > 0
         
         val newStreak = if (newCount >= stepGoal) {
-            if ((yesterdayEntry?.count ?: 0) >= stepGoal) (yesterdayEntry?.streak ?: 0) + 1 else 1
+            if (yesterdayCount >= stepGoal) (yesterdayEntry?.streak ?: 0) + 1 else 1
         } else 0
 
         val distanceKm = newCount * 0.000762f
         val calories = (newCount * 0.04f).toInt()
-        val activeMinutes = (newCount / 80)
+        val activeTimeMinutes = (newCount / 80)
 
         stepDao.insertOrUpdateSteps(
             StepEntity(
                 date = today,
+                userId = userId,
                 count = newCount,
                 distanceKm = distanceKm,
                 caloriesBurned = calories,
-                activeTimeMinutes = activeMinutes,
+                activeTimeMinutes = activeTimeMinutes,
                 streak = newStreak,
                 isAchievement = isAchievement
             )
         )
         return@withLock newCount
     }
+
     private fun getYesterdayDate(): String = LocalDate.now().minusDays(1).format(dateFormatter)
 
-    fun getAllStepHistory(): Flow<List<StepEntity>> = stepDao.getAllSteps()
+    fun getAllStepHistory(): Flow<List<StepEntity>> = stepDao.getAllSteps(getCurrentUserId())
+
+    suspend fun deleteHistoryRecord(date: String) {
+        val userId = getCurrentUserId()
+        stepDao.deleteStepsForDate(date, userId)
+        recalculateStreaks(userId)
+    }
+
+    private suspend fun recalculateStreaks(userId: String) {
+        val allHistory = stepDao.getAllStepsList(userId).reversed() // Oldest first
+        var currentStreak = 0
+        val stepGoal = getStepGoal()
+
+        allHistory.forEach { entity ->
+            val count = entity.count
+            if (count >= stepGoal) {
+                currentStreak++
+            } else {
+                currentStreak = 0
+            }
+            stepDao.insertOrUpdateSteps(entity.copy(streak = currentStreak))
+        }
+    }
 }

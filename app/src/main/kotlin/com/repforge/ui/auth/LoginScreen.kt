@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -39,7 +40,7 @@ import com.repforge.data.local.entities.UserEntity
 
 private const val TAG = "LOGIN_SCREEN"
 
-enum class AuthMethod { EMAIL, PHONE }
+enum class AuthMethod { SELECTION, EMAIL, PHONE }
 
 @Composable
 fun LoginScreen(
@@ -71,7 +72,7 @@ fun LoginScreen(
     if (userState?.isLoggedIn == true && userState?.isProfileComplete == false) {
         ProfileSetupScreen(viewModel)
     } else {
-        var authMethod by remember { mutableStateOf(AuthMethod.EMAIL) }
+        var authMethod by remember { mutableStateOf(AuthMethod.SELECTION) }
 
         Column(
             modifier = Modifier
@@ -81,6 +82,22 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            if (authMethod != AuthMethod.SELECTION) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { authMethod = AuthMethod.SELECTION }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                    Text(
+                        text = if (authMethod == AuthMethod.EMAIL) "Email Login" else "Phone Login",
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
             Text(
                 text = "RepForge",
                 fontSize = 40.sp,
@@ -91,85 +108,100 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Recent Sessions Section
-            if (savedProfiles.isNotEmpty()) {
-                Text(
-                    text = "Recent Sessions",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.align(Alignment.Start)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+            if (authMethod == AuthMethod.SELECTION) {
+                // Main Selection UI
+                if (savedProfiles.isNotEmpty()) {
+                    Text(
+                        text = "Recent Sessions",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.align(Alignment.Start)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        items(savedProfiles) { profile ->
+                            RecentUserItem(profile, screenWidth, onClick = {
+                                // Pre-fill logic can be added here
+                            })
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(32.dp))
+                }
+
+                Button(
+                    onClick = { authMethod = AuthMethod.EMAIL },
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    items(savedProfiles) { profile ->
-                        RecentUserItem(profile, screenWidth, onClick = {
-                            // Pre-fill logic can be added here
-                        })
+                    Icon(Icons.Default.Email, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Continue with Email")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = { authMethod = AuthMethod.PHONE },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Phone, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Continue with Phone")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(text = "OR", color = Color.Gray)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                OutlinedButton(
+                    onClick = {
+                        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                            .requestEmail()
+                            .requestIdToken("125160357464-cpptkjvmdaftu2dianfqk7afjbn5p5g5.apps.googleusercontent.com")
+                            .build()
+                        val client = GoogleSignIn.getClient(context, gso)
+                        googleSignInLauncher.launch(client.signInIntent)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isLoading
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.AccountCircle, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Continue with Google")
                     }
                 }
-                Spacer(modifier = Modifier.height(32.dp))
-            }
 
-            if (error != null) {
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                Spacer(modifier = Modifier.height(24.dp))
+
+                TextButton(
+                    onClick = { viewModel.loginAsGuest() },
+                    enabled = !isLoading
                 ) {
-                    Text(
-                        text = error!!,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(12.dp),
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    Text("Continue as Guest", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
                 }
-            }
-
-            if (authMethod == AuthMethod.EMAIL) {
-                EmailAuthFields(viewModel, isLoading)
             } else {
-                PhoneAuthFields(viewModel, isLoading, isCodeSent)
-            }
+                // Sub-auth fields
+                if (error != null) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    ) {
+                        Text(
+                            text = error!!,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(12.dp),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            TextButton(
-                onClick = { viewModel.loginAsGuest() },
-                enabled = !isLoading
-            ) {
-                Text("Continue as Guest", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            TextButton(onClick = { 
-                authMethod = if (authMethod == AuthMethod.EMAIL) AuthMethod.PHONE else AuthMethod.EMAIL 
-            }) {
-                Text(if (authMethod == AuthMethod.EMAIL) "Use Phone Number instead" else "Use Email instead")
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(text = "OR", color = Color.Gray)
-            Spacer(modifier = Modifier.height(16.dp))
-
-            OutlinedButton(
-                onClick = {
-                    val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                        .requestEmail()
-                        .requestIdToken("125160357464-cpptkjvmdaftu2dianfqk7afjbn5p5g5.apps.googleusercontent.com")
-                        .build()
-                    val client = GoogleSignIn.getClient(context, gso)
-                    googleSignInLauncher.launch(client.signInIntent)
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isLoading
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.AccountCircle, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Continue with Google")
+                if (authMethod == AuthMethod.EMAIL) {
+                    EmailAuthFields(viewModel, isLoading)
+                } else {
+                    PhoneAuthFields(viewModel, isLoading, isCodeSent)
                 }
             }
         }
@@ -348,7 +380,16 @@ fun ProfileSetupScreen(viewModel: AuthViewModel) {
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(text = "Complete Your Profile", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = { viewModel.logout() }) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            }
+            Text(text = "Complete Your Profile", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        }
+        
         Spacer(modifier = Modifier.height(16.dp))
 
         Box(

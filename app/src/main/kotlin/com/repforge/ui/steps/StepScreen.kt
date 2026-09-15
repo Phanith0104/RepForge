@@ -8,6 +8,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.repforge.data.local.entities.StepEntity
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StepScreen(viewModel: StepViewModel = hiltViewModel()) {
     val stepData by viewModel.todaySteps.collectAsState()
@@ -27,14 +29,14 @@ fun StepScreen(viewModel: StepViewModel = hiltViewModel()) {
     val weeklyAvg by viewModel.weeklyAverage.collectAsState()
     val monthlyAvg by viewModel.monthlyAverage.collectAsState()
     val isSensorAvailable = viewModel.isSensorAvailable
-    val isBatteryOptimizationDisabled = viewModel.isBatteryOptimizationDisabled
     val currentGoal by viewModel.stepGoal.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val streak by viewModel.currentStreak.collectAsState()
 
     var selectedHistoryRecord by remember { mutableStateOf<StepEntity?>(null) }
     var showGoalDialog by remember { mutableStateOf(false) }
     
     val steps = stepData?.count ?: 0
-    val streak = stepData?.streak ?: 0
     val isAchievement = stepData?.isAchievement ?: false
     val distance = stepData?.distanceKm ?: 0f
     val calories = stepData?.caloriesBurned ?: 0
@@ -42,9 +44,13 @@ fun StepScreen(viewModel: StepViewModel = hiltViewModel()) {
     
     val progress = (steps.toFloat() / currentGoal).coerceIn(0f, 1f)
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        // Streak Display - Top Right
-        if (streak > 0) {
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = { viewModel.refresh() },
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Streak Display - Top Right (Requirement 1 & 5)
             Surface(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -53,184 +59,172 @@ fun StepScreen(viewModel: StepViewModel = hiltViewModel()) {
                 color = MaterialTheme.colorScheme.tertiaryContainer,
                 tonalElevation = 4.dp
             ) {
-                Row(
+                Column(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Icon(
-                        Icons.Default.Whatshot,
-                        contentDescription = null,
-                        tint = Color(0xFFFF5722),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Whatshot,
+                            contentDescription = null,
+                            tint = Color(0xFFFF5722),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "$streak",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
                     Text(
-                        text = "$streak",
-                        style = MaterialTheme.typography.titleMedium,
+                        text = "DAY STREAK",
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
                     )
                 }
             }
-        }
 
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            item {
-                if (!isSensorAvailable) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "⚠️ Hardware Step Counter not detected.",
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "This device lacks a physical step sensor. RepForge will try to use the accelerometer as a fallback, but tracking may be less accurate.",
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                style = MaterialTheme.typography.bodySmall
-                            )
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                item {
+                    Spacer(modifier = Modifier.height(60.dp)) // Avoid covering by streak indicator
+
+                    if (!isSensorAvailable) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = "⚠️ Hardware Step Counter not detected.",
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "This device lacks a physical step sensor. RepForge will try to use the accelerometer as a fallback.",
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
                         }
                     }
-                }
 
-                if (isSensorAvailable && !isBatteryOptimizationDisabled) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "💡 Optimization Required",
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "RepForge needs to run in the background. Please disable battery optimization to prevent your phone from stopping the step counter.",
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-                }
-
-                if (isAchievement) {
-                    Text(
-                        text = "🏆 New Achievement!",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = Color(0xFFFFD700), // Gold
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
-
-                Text(
-                    text = "Daily Steps",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                Box(contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.size(200.dp),
-                        strokeWidth = 12.dp,
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = Color.LightGray
-                    )
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable { showGoalDialog = true }
-                    ) {
+                    if (isAchievement) {
                         Text(
-                            text = steps.toString(),
-                            fontSize = 40.sp,
+                            text = "🏆 New Achievement!",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Color(0xFFFFD700), // Gold
                             fontWeight = FontWeight.Bold
                         )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = "/ $currentGoal", fontSize = 16.sp)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(Icons.Default.Edit, contentDescription = "Edit Goal", modifier = Modifier.size(14.dp), tint = Color.Gray)
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    Text(
+                        text = "Daily Steps",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    Box(contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.size(200.dp),
+                            strokeWidth = 12.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = Color.LightGray
+                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.clickable { showGoalDialog = true }
+                        ) {
+                            Text(
+                                text = steps.toString(),
+                                fontSize = 40.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(text = "/ $currentGoal", fontSize = 16.sp)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(Icons.Default.Edit, contentDescription = "Edit Goal", modifier = Modifier.size(14.dp), tint = Color.Gray)
+                            }
                         }
                     }
-                }
-                
-                Spacer(modifier = Modifier.height(24.dp))
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
 
-                // Stats Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    StatItem(label = "Distance", value = "${"%.2f".format(distance)} km")
-                    StatItem(label = "Calories", value = "$calories kcal")
-                    StatItem(label = "Time", value = "${activeTime}m")
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                if (streak > 0) {
-                    Text(
-                        text = "You're on fire! Keep it up.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFFFF5722)
-                    )
-                } else {
-                    Text(
-                        text = "Reach $currentGoal steps for a streak!",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Averages Section
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                ) {
+                    // Stats Row
                     Row(
-                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceAround
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Weekly Avg", style = MaterialTheme.typography.labelMedium)
-                            Text(weeklyAvg.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        }
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Monthly Avg", style = MaterialTheme.typography.labelMedium)
-                            Text(monthlyAvg.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        StatItem(label = "Distance", value = "${"%.2f".format(distance)} km")
+                        StatItem(label = "Calories", value = "$calories kcal")
+                        StatItem(label = "Time", value = "${activeTime}m")
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    if (streak > 0) {
+                        Text(
+                            text = "You're on fire! Keep it up.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFFFF5722)
+                        )
+                    } else {
+                        Text(
+                            text = "Reach $currentGoal steps for a streak!",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // Averages Section
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceAround
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Weekly Avg", style = MaterialTheme.typography.labelMedium)
+                                Text(weeklyAvg.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Monthly Avg", style = MaterialTheme.typography.labelMedium)
+                                Text(monthlyAvg.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    HorizontalDivider()
+                    
+                    Text(
+                        text = "History",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(vertical = 16.dp),
+                        color = MaterialTheme.colorScheme.secondary
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                HorizontalDivider()
-                
-                Text(
-                    text = "History",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(vertical = 16.dp),
-                    color = MaterialTheme.colorScheme.secondary
-                )
-            }
-
-            items(history) { record ->
-                HistoryItem(record, onClick = { selectedHistoryRecord = record })
+                items(history) { record ->
+                    HistoryItem(record, onClick = { selectedHistoryRecord = record })
+                }
             }
         }
     }

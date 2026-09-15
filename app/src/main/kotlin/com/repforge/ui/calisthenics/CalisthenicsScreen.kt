@@ -14,19 +14,34 @@ import androidx.compose.ui.unit.dp
 import com.repforge.domain.model.CALISTHENICS_LEVELS
 import com.repforge.domain.model.CalisthenicsProgression
 
-@Composable
-fun CalisthenicsScreen() {
-    Column(modifier = Modifier.fillMaxSize()) {
-        Text(
-            text = "Calisthenics Mastery",
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(16.dp),
-            color = MaterialTheme.colorScheme.primary
-        )
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.repforge.ui.auth.AuthViewModel
 
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(CALISTHENICS_LEVELS) { progression ->
-                ProgressionCard(progression)
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CalisthenicsScreen(authViewModel: AuthViewModel = hiltViewModel()) {
+    val isRefreshing by authViewModel.isLoading.collectAsState()
+
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = { authViewModel.refresh() },
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Text(
+                text = "Calisthenics Mastery",
+                style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.padding(16.dp),
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(CALISTHENICS_LEVELS) { progression ->
+                    ProgressionCard(progression)
+                }
             }
         }
     }

@@ -4,12 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.repforge.data.local.entities.StepEntity
 import com.repforge.data.repository.StepRepository
+import com.repforge.data.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import javax.inject.Inject
 
 import android.os.PowerManager
@@ -18,6 +17,7 @@ import androidx.core.content.getSystemService
 @HiltViewModel
 class StepViewModel @Inject constructor(
     private val repository: StepRepository,
+    private val userRepository: UserRepository,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
@@ -57,8 +57,58 @@ class StepViewModel @Inject constructor(
     private val _stepGoal = MutableStateFlow(repository.getStepGoal())
     val stepGoal: StateFlow<Int> = _stepGoal
 
+    val currentStreak: StateFlow<Int> = combine(todaySteps, stepHistory, stepGoal) { today, history, goal ->
+        val stepsToday = today?.count ?: 0
+        if (stepsToday >= goal) {
+            today?.streak ?: 0
+        } else {
+            // Check yesterday's record
+            val yesterdayDate = repository.getTodayDate() // Wait, this is today
+            // I need a helper for yesterday's date or just look at history
+            // history is sorted by date DESC.
+            val latestInHistory = history.firstOrNull()
+            if (latestInHistory != null) {
+                if (latestInHistory.date == repository.getTodayDate()) {
+                    // Today is the first item. Yesterday is the second.
+                    val yesterday = history.getOrNull(1)
+                    if (yesterday != null && yesterday.count >= goal) {
+                        yesterday.streak
+                    } else 0
+                } else {
+                    // Today is NOT in history yet. Latest is yesterday or older.
+                    if (latestInHistory.count >= goal) {
+                        latestInHistory.streak
+                    } else 0
+                }
+            } else 0
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     fun updateStepGoal(newGoal: Int) {
         repository.updateStepGoal(newGoal)
         _stepGoal.value = newGoal
+    }
+
+    fun deleteHistoryRecord(date: String) {
+        viewModelScope.launch {
+            repository.deleteHistoryRecord(date)
+        }
+    }
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing = _isRefreshing.asStateFlow()
+
+    fun refresh() {
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                userRepository.syncUserFromFirebase()
+                // repository.syncSteps() // If we add cloud sync for steps later
+            } catch (e: Exception) {
+                // Log or handle error
+            }
+            delay(1000)
+            _isRefreshing.value = false
+        }
     }
 }
