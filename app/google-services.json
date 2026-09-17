@@ -9,7 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:125160357464:android:365b6892984ff2be6d142d",
         "android_client_info": {
-          "package_name": "com.example.repforge"
+          "package_name": "com.repforge.app"
         }
       },
       "oauth_client": [

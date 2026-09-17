@@ -2,8 +2,10 @@ package com.repforge.ui.auth
 
 import android.app.Activity
 import android.util.Log
+import android.util.Patterns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -11,6 +13,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -21,13 +25,20 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -36,6 +47,7 @@ import coil.compose.AsyncImage
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
+import com.repforge.R
 import com.repforge.data.local.entities.UserEntity
 
 private const val TAG = "LOGIN_SCREEN"
@@ -51,6 +63,7 @@ fun LoginScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
     val isCodeSent by viewModel.isCodeSent.collectAsState()
+    
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
@@ -62,10 +75,15 @@ fun LoginScreen(
             val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
             try {
                 val account = task.getResult(ApiException::class.java)
-                account?.idToken?.let { viewModel.signInWithGoogle(it) }
+                account?.idToken?.let { viewModel.signInWithGoogle(it) } ?: run {
+                    viewModel.stopLoading()
+                }
             } catch (e: ApiException) {
                 Log.e(TAG, "Google Sign-In failed", e)
+                viewModel.stopLoading()
             }
+        } else {
+            viewModel.stopLoading()
         }
     }
 
@@ -77,8 +95,10 @@ fun LoginScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp)
-                .verticalScroll(rememberScrollState()),
+                .background(MaterialTheme.colorScheme.background)
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -92,11 +112,20 @@ fun LoginScreen(
                     }
                     Text(
                         text = if (authMethod == AuthMethod.EMAIL) "Email Login" else "Phone Login",
-                        style = MaterialTheme.typography.titleLarge
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onBackground
                     )
                 }
                 Spacer(modifier = Modifier.height(16.dp))
             }
+
+            Image(
+                painter = painterResource(id = R.mipmap.ic_launcher),
+                contentDescription = null,
+                modifier = Modifier.size(100.dp)
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text(
                 text = "RepForge",
@@ -104,7 +133,11 @@ fun LoginScreen(
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.primary
             )
-            Text(text = "Strength in consistency", fontSize = 16.sp, color = Color.Gray)
+            Text(
+                text = "Strength in consistency", 
+                fontSize = 16.sp, 
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+            )
 
             Spacer(modifier = Modifier.height(32.dp))
 
@@ -133,7 +166,8 @@ fun LoginScreen(
 
                 Button(
                     onClick = { authMethod = AuthMethod.EMAIL },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(Icons.Default.Email, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
@@ -144,7 +178,8 @@ fun LoginScreen(
 
                 Button(
                     onClick = { authMethod = AuthMethod.PHONE },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(Icons.Default.Phone, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
@@ -152,7 +187,7 @@ fun LoginScreen(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(text = "OR", color = Color.Gray)
+                Text(text = "OR", color = Color.Gray, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(16.dp))
 
                 OutlinedButton(
@@ -165,12 +200,20 @@ fun LoginScreen(
                         googleSignInLauncher.launch(client.signInIntent)
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !isLoading
+                    enabled = !isLoading,
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.AccountCircle, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Continue with Google")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        if (isLoading) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Default.AccountCircle, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Continue with Google")
+                        }
                     }
                 }
 
@@ -185,13 +228,18 @@ fun LoginScreen(
             } else {
                 // Sub-auth fields
                 if (error != null) {
+                    val isSuccess = error!!.startsWith("SUCCESS:")
+                    val displayError = if (isSuccess) error!!.substring(8) else error!!
+                    
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isSuccess) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.errorContainer
+                        )
                     ) {
                         Text(
-                            text = error!!,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            text = displayError,
+                            color = if (isSuccess) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.padding(12.dp),
                             style = MaterialTheme.typography.bodySmall
                         )
@@ -245,7 +293,8 @@ fun RecentUserItem(user: UserEntity, screenWidth: Dp, onClick: () -> Unit) {
         Text(
             text = if (user.isGuest) "Guest" else user.name.split(" ").firstOrNull() ?: "User",
             style = MaterialTheme.typography.labelSmall,
-            maxLines = 1
+            maxLines = 1,
+            color = MaterialTheme.colorScheme.onBackground
         )
     }
 }
@@ -254,6 +303,13 @@ fun RecentUserItem(user: UserEntity, screenWidth: Dp, onClick: () -> Unit) {
 fun EmailAuthFields(viewModel: AuthViewModel, isLoading: Boolean) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    val isEmailValid = email.isNotBlank() && Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()
+    val isPasswordValid = password.length >= 6
 
     OutlinedTextField(
         value = email,
@@ -262,7 +318,15 @@ fun EmailAuthFields(viewModel: AuthViewModel, isLoading: Boolean) {
         modifier = Modifier.fillMaxWidth(),
         enabled = !isLoading,
         leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Email,
+            imeAction = ImeAction.Next
+        ),
+        keyboardActions = KeyboardActions(
+            onNext = { focusManager.moveFocus(FocusDirection.Down) }
+        ),
+        singleLine = true,
+        shape = RoundedCornerShape(12.dp)
     )
 
     Spacer(modifier = Modifier.height(8.dp))
@@ -273,21 +337,64 @@ fun EmailAuthFields(viewModel: AuthViewModel, isLoading: Boolean) {
         label = { Text("Password") },
         modifier = Modifier.fillMaxWidth(),
         enabled = !isLoading,
-        visualTransformation = PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+        trailingIcon = {
+            val image = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                Icon(image, contentDescription = null)
+            }
+        },
+        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Password,
+            imeAction = ImeAction.Done
+        ),
+        keyboardActions = KeyboardActions(
+            onDone = { 
+                if (isEmailValid && isPasswordValid) {
+                    keyboardController?.hide()
+                    viewModel.login(email.trim(), password)
+                }
+            }
+        ),
+        singleLine = true,
+        shape = RoundedCornerShape(12.dp)
     )
 
-    Spacer(modifier = Modifier.height(24.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End
+    ) {
+        TextButton(
+            onClick = { 
+                if (isEmailValid) {
+                    viewModel.resetPassword(email.trim())
+                } else {
+                    // Could show a specific tip to enter email first
+                }
+            },
+            enabled = !isLoading
+        ) {
+            Text("Forgot Password?", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
 
     Button(
-        onClick = { viewModel.login(email, password) },
+        onClick = { 
+            keyboardController?.hide()
+            viewModel.login(email.trim(), password) 
+        },
         modifier = Modifier.fillMaxWidth(),
-        enabled = !isLoading && email.isNotBlank() && password.length >= 6
+        enabled = !isLoading && isEmailValid && isPasswordValid,
+        shape = RoundedCornerShape(12.dp)
     ) {
         if (isLoading) {
             CircularProgressIndicator(
                 modifier = Modifier.size(24.dp),
-                color = MaterialTheme.colorScheme.onPrimary
+                color = MaterialTheme.colorScheme.onPrimary,
+                strokeWidth = 2.dp
             )
         } else {
             Text("Login / Sign Up")
@@ -300,6 +407,7 @@ fun PhoneAuthFields(viewModel: AuthViewModel, isLoading: Boolean, isCodeSent: Bo
     var phoneNumber by remember { mutableStateOf("") }
     var otpCode by remember { mutableStateOf("") }
     val context = LocalContext.current
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     if (!isCodeSent) {
         OutlinedTextField(
@@ -310,7 +418,20 @@ fun PhoneAuthFields(viewModel: AuthViewModel, isLoading: Boolean, isCodeSent: Bo
             modifier = Modifier.fillMaxWidth(),
             enabled = !isLoading,
             leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Phone,
+                imeAction = ImeAction.Send
+            ),
+            keyboardActions = KeyboardActions(
+                onSend = {
+                    if (phoneNumber.isNotBlank()) {
+                        keyboardController?.hide()
+                        viewModel.verifyPhone(context as Activity, phoneNumber)
+                    }
+                }
+            ),
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp)
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -318,14 +439,16 @@ fun PhoneAuthFields(viewModel: AuthViewModel, isLoading: Boolean, isCodeSent: Bo
         Button(
             onClick = { 
                 if (phoneNumber.isNotBlank()) {
+                    keyboardController?.hide()
                     viewModel.verifyPhone(context as Activity, phoneNumber) 
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            enabled = !isLoading && phoneNumber.isNotBlank()
+            enabled = !isLoading && phoneNumber.isNotBlank(),
+            shape = RoundedCornerShape(12.dp)
         ) {
             if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
             } else {
                 Text("Send Verification Code")
             }
@@ -337,18 +460,37 @@ fun PhoneAuthFields(viewModel: AuthViewModel, isLoading: Boolean, isCodeSent: Bo
             label = { Text("6-Digit Code") },
             modifier = Modifier.fillMaxWidth(),
             enabled = !isLoading,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Number,
+                imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    if (otpCode.length == 6) {
+                        keyboardController?.hide()
+                        viewModel.signInWithPhoneCode(otpCode)
+                    }
+                }
+            ),
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp)
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(
-            onClick = { if (otpCode.length == 6) viewModel.signInWithPhoneCode(otpCode) },
+            onClick = { 
+                if (otpCode.length == 6) {
+                    keyboardController?.hide()
+                    viewModel.signInWithPhoneCode(otpCode) 
+                }
+            },
             modifier = Modifier.fillMaxWidth(),
-            enabled = !isLoading && otpCode.length == 6
+            enabled = !isLoading && otpCode.length == 6,
+            shape = RoundedCornerShape(12.dp)
         ) {
             if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
             } else {
                 Text("Verify & Login")
             }
@@ -376,6 +518,7 @@ fun ProfileSetupScreen(viewModel: AuthViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .padding(24.dp)
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -387,7 +530,7 @@ fun ProfileSetupScreen(viewModel: AuthViewModel) {
             IconButton(onClick = { viewModel.logout() }) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
-            Text(text = "Complete Your Profile", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text(text = "Complete Your Profile", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
         }
         
         Spacer(modifier = Modifier.height(16.dp))
@@ -412,13 +555,31 @@ fun ProfileSetupScreen(viewModel: AuthViewModel) {
         }
 
         Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "This helps us calculate your BMI and personalize your experience", fontSize = 14.sp, color = Color.Gray)
+        Text(
+            text = "This helps us calculate your BMI and personalize your experience", 
+            fontSize = 14.sp, 
+            color = Color.Gray,
+            textAlign = TextAlign.Center
+        )
         
         Spacer(modifier = Modifier.height(32.dp))
 
-        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Full Name") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            value = name, 
+            onValueChange = { name = it }, 
+            label = { Text("Full Name") }, 
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        )
         Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(value = age, onValueChange = { age = it }, label = { Text("Age") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+        OutlinedTextField(
+            value = age, 
+            onValueChange = { if (it.all { c -> c.isDigit() }) age = it }, 
+            label = { Text("Age") }, 
+            modifier = Modifier.fillMaxWidth(), 
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            shape = RoundedCornerShape(12.dp)
+        )
         Spacer(modifier = Modifier.height(8.dp))
         
         Row(modifier = Modifier.fillMaxWidth()) {
@@ -427,7 +588,8 @@ fun ProfileSetupScreen(viewModel: AuthViewModel) {
                 onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) weight = it }, 
                 label = { Text("Weight (kg)") }, 
                 modifier = Modifier.weight(1f), 
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                shape = RoundedCornerShape(12.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
             OutlinedTextField(
@@ -435,17 +597,32 @@ fun ProfileSetupScreen(viewModel: AuthViewModel) {
                 onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) height = it }, 
                 label = { Text("Height (cm)") }, 
                 modifier = Modifier.weight(1f), 
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                shape = RoundedCornerShape(12.dp)
             )
         }
         
         Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(value = phoneNumber, onValueChange = { phoneNumber = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
+        OutlinedTextField(
+            value = phoneNumber, 
+            onValueChange = { phoneNumber = it }, 
+            label = { Text("Phone Number") }, 
+            modifier = Modifier.fillMaxWidth(), 
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+            shape = RoundedCornerShape(12.dp)
+        )
         Spacer(modifier = Modifier.height(8.dp))
         
         Box(modifier = Modifier.fillMaxWidth()) {
-            OutlinedTextField(value = gender, onValueChange = {}, label = { Text("Gender") }, readOnly = true, modifier = Modifier.fillMaxWidth(),
-                trailingIcon = { TextButton(onClick = { expanded = true }) { Text("Select") } })
+            OutlinedTextField(
+                value = gender, 
+                onValueChange = {}, 
+                label = { Text("Gender") }, 
+                readOnly = true, 
+                modifier = Modifier.fillMaxWidth(),
+                trailingIcon = { TextButton(onClick = { expanded = true }) { Text("Select") } },
+                shape = RoundedCornerShape(12.dp)
+            )
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 genders.forEach { g -> DropdownMenuItem(text = { Text(g) }, onClick = { gender = g; expanded = false }) }
             }
@@ -458,9 +635,15 @@ fun ProfileSetupScreen(viewModel: AuthViewModel) {
                 viewModel.updateProfile(name, age.toIntOrNull() ?: 0, gender, phoneNumber, weight.toFloatOrNull() ?: 0f, height.toFloatOrNull() ?: 0f)
             },
             modifier = Modifier.fillMaxWidth(),
-            enabled = name.isNotBlank() && age.isNotBlank() && weight.isNotBlank() && height.isNotBlank()
+            enabled = name.isNotBlank() && age.isNotBlank() && weight.isNotBlank() && height.isNotBlank(),
+            shape = RoundedCornerShape(12.dp)
         ) {
             Text("Start My Journey")
         }
     }
+}
+
+@Composable
+fun TextAlign(textAlign: TextAlign) {
+    // This is just a placeholder for the import if needed
 }

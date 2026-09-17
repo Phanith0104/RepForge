@@ -3,8 +3,11 @@ package com.repforge
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -111,6 +114,8 @@ fun MainContent() {
     val userState by authViewModel.user.collectAsState()
     val isLoading by authViewModel.isLoading.collectAsState()
 
+    var showPermissionRationale by remember { mutableStateOf(false) }
+
     val permissionsToRequest = mutableListOf<String>().apply {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             add(Manifest.permission.ACTIVITY_RECOGNITION)
@@ -128,22 +133,72 @@ fun MainContent() {
         } else true
         
         if (activityGranted) {
-            context.startForegroundService(Intent(context, StepCounterService::class.java))
+            try {
+                context.startForegroundService(Intent(context, StepCounterService::class.java))
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Failed to start StepCounterService", e)
+            }
         }
     }
 
+    var showSettingsDialog by remember { mutableStateOf(false) }
+
     LaunchedEffect(userState?.isProfileComplete) {
         if (userState?.isProfileComplete == true) {
-            val needsRequest = permissionsToRequest.any {
+            val missingPermissions = permissionsToRequest.filter {
                 ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
             }
 
-            if (needsRequest) {
-                permissionLauncher.launch(permissionsToRequest.toTypedArray())
+            if (missingPermissions.isNotEmpty()) {
+                showPermissionRationale = true
             } else {
-                context.startForegroundService(Intent(context, StepCounterService::class.java))
+                try {
+                    context.startForegroundService(Intent(context, StepCounterService::class.java))
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Failed to start StepCounterService", e)
+                }
             }
         }
+    }
+
+    if (showPermissionRationale) {
+        AlertDialog(
+            onDismissRequest = { showPermissionRationale = false },
+            title = { Text("Permissions Required") },
+            text = { Text("RepForge needs Activity Recognition to track your steps and Notifications to keep you updated. These are essential for the fitness tracking features.") },
+            confirmButton = {
+                Button(onClick = {
+                    showPermissionRationale = false
+                    permissionLauncher.launch(permissionsToRequest.toTypedArray())
+                }) { Text("Grant") }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    showPermissionRationale = false 
+                    showSettingsDialog = true
+                }) { Text("Settings") }
+            }
+        )
+    }
+
+    if (showSettingsDialog) {
+        AlertDialog(
+            onDismissRequest = { showSettingsDialog = false },
+            title = { Text("Open Settings") },
+            text = { Text("Permissions were denied. To enable step tracking, please go to App Settings and grant Activity Recognition and Notifications.") },
+            confirmButton = {
+                Button(onClick = {
+                    showSettingsDialog = false
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.fromParts("package", context.packageName, null)
+                    }
+                    context.startActivity(intent)
+                }) { Text("Go to Settings") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSettingsDialog = false }) { Text("Cancel") }
+            }
+        )
     }
 
     if (isLoading) {

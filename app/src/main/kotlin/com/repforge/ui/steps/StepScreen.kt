@@ -1,11 +1,15 @@
 package com.repforge.ui.steps
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -14,10 +18,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.repforge.data.local.entities.StepEntity
 
@@ -32,6 +38,10 @@ fun StepScreen(viewModel: StepViewModel = hiltViewModel()) {
     val currentGoal by viewModel.stepGoal.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val streak by viewModel.currentStreak.collectAsState()
+    
+    val context = LocalContext.current
+    val hasPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED
 
     var selectedHistoryRecord by remember { mutableStateOf<StepEntity?>(null) }
     var showGoalDialog by remember { mutableStateOf(false) }
@@ -96,7 +106,27 @@ fun StepScreen(viewModel: StepViewModel = hiltViewModel()) {
                 item {
                     Spacer(modifier = Modifier.height(60.dp)) // Avoid covering by streak indicator
 
-                    if (!isSensorAvailable) {
+                    if (!hasPermission) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = "Permission Missing",
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Please enable Activity Recognition in app settings to track your steps accurately.",
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    } else if (!isSensorAvailable) {
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
@@ -243,7 +273,8 @@ fun StepScreen(viewModel: StepViewModel = hiltViewModel()) {
     selectedHistoryRecord?.let { record ->
         HistoryDetailDialog(
             record = record,
-            onDismiss = { selectedHistoryRecord = null }
+            onDismiss = { selectedHistoryRecord = null },
+            onDelete = { viewModel.deleteHistoryRecord(record.date) }
         )
     }
 }
@@ -276,7 +307,30 @@ fun GoalEditDialog(currentGoal: Int, onDismiss: () -> Unit, onConfirm: (Int) -> 
 }
 
 @Composable
-fun HistoryDetailDialog(record: StepEntity, onDismiss: () -> Unit) {
+fun HistoryDetailDialog(record: StepEntity, onDismiss: () -> Unit, onDelete: () -> Unit) {
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Delete Record?") },
+            text = { Text("Are you sure you want to delete the step history for ${record.date}?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDelete()
+                        showDeleteConfirmation = false
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("DELETE") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) { Text("CANCEL") }
+            }
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = "Details for ${record.date}", fontWeight = FontWeight.Bold) },
@@ -296,6 +350,11 @@ fun HistoryDetailDialog(record: StepEntity, onDismiss: () -> Unit) {
         confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text("Close")
+            }
+        },
+        dismissButton = {
+            IconButton(onClick = { showDeleteConfirmation = true }) {
+                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
             }
         }
     )

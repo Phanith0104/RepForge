@@ -23,7 +23,6 @@ object DatabaseModule {
             RepForgeDatabase::class.java,
             "repforge_db"
         )
-            .fallbackToDestructiveMigration(true)
             .build()
     }
 

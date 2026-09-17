@@ -1,5 +1,6 @@
 package com.repforge.ui.gym
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -7,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -20,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -28,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.repforge.R
 import com.repforge.data.local.entities.WorkoutEntity
 import com.repforge.data.local.entities.WorkoutTemplateEntity
 import com.repforge.domain.model.Exercise
@@ -64,6 +69,8 @@ fun GymTrackerScreen(viewModel: GymViewModel = hiltViewModel()) {
     var showAddWorkoutDialog by remember { mutableStateOf(false) }
     var showApplyTemplateDialog by remember { mutableStateOf(false) }
     var showSaveTemplateDialog by remember { mutableStateOf<List<WorkoutEntity>?>(null) }
+    var showTimerDialog by remember { mutableStateOf(false) }
+    var showStopwatchDialog by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
 
     BackHandler(enabled = selectedTab == GymViewModel.GymTab.WORKOUT && navState !is GymViewModel.GymNavState.MuscleGroups) {
@@ -83,6 +90,12 @@ fun GymTrackerScreen(viewModel: GymViewModel = hiltViewModel()) {
                         }
                     },
                     actions = {
+                        IconButton(onClick = { showStopwatchDialog = true }) {
+                            Icon(Icons.Default.Timer, contentDescription = "Stopwatch")
+                        }
+                        IconButton(onClick = { showTimerDialog = true }) {
+                            Icon(Icons.Default.HourglassBottom, contentDescription = "Timer")
+                        }
                         if (selectedTab != GymViewModel.GymTab.CALENDAR) {
                             IconButton(onClick = { viewModel.selectTab(GymViewModel.GymTab.CALENDAR) }) {
                                 Icon(Icons.Default.CalendarMonth, contentDescription = "Open Calendar")
@@ -152,7 +165,9 @@ fun GymTrackerScreen(viewModel: GymViewModel = hiltViewModel()) {
                     Icon(Icons.Default.Add, contentDescription = "Start Workout")
                 }
             } else if (selectedTab == GymViewModel.GymTab.CALENDAR) {
-                FloatingActionButton(onClick = { showLogDialog = true; selectedExercise = null }) {
+                FloatingActionButton(onClick = { 
+                    showLogDialog = true; selectedExercise = null 
+                }) {
                     Icon(Icons.Default.EventNote, contentDescription = "Plan Workout")
                 }
             }
@@ -169,6 +184,7 @@ fun GymTrackerScreen(viewModel: GymViewModel = hiltViewModel()) {
                         logs = completedLogs,
                         onEdit = { workoutToEdit = it },
                         onDelete = { workoutToDelete = it },
+                        onDeleteGroup = { workoutToDelete = it.copy(exerciseName = "ALL_EXERCISES") },
                         onSaveTemplate = { showSaveTemplateDialog = listOf(it) }
                     )
                 }
@@ -186,8 +202,7 @@ fun GymTrackerScreen(viewModel: GymViewModel = hiltViewModel()) {
                         },
                         onBackClick = { viewModel.navigateBack() },
                         onStartTodayPlan = {
-                            // If today has plans, we could pre-fill them. 
-                            // For simplicity, we just navigate to Exercises of those muscle groups if needed.
+                            // If today has plans, we could highlight them or scroll.
                         }
                     )
                 }
@@ -227,7 +242,11 @@ fun GymTrackerScreen(viewModel: GymViewModel = hiltViewModel()) {
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.deleteWorkout(workoutToDelete!!)
+                        if (workoutToDelete!!.exerciseName == "ALL_EXERCISES") {
+                            viewModel.deleteWorkoutByGroup(workoutToDelete!!.date, workoutToDelete!!.workoutName)
+                        } else {
+                            viewModel.deleteWorkout(workoutToDelete!!)
+                        }
                         workoutToDelete = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
@@ -273,6 +292,8 @@ fun GymTrackerScreen(viewModel: GymViewModel = hiltViewModel()) {
                             sets = 1,
                             reps = set.reps,
                             weight = set.weight,
+                            restTime = set.restTimeSeconds,
+                            notes = set.notes,
                             date = if (selectedTab == GymViewModel.GymTab.CALENDAR) selectedDate else null,
                             isCompleted = selectedTab != GymViewModel.GymTab.CALENDAR
                         )
@@ -307,7 +328,6 @@ fun GymTrackerScreen(viewModel: GymViewModel = hiltViewModel()) {
         AddWorkoutDialog(
             onDismiss = { showAddWorkoutDialog = false },
             onSave = { name, list ->
-                // This could save a blank template or use active session
                 viewModel.saveWorkoutTemplate(name, emptyList()) 
                 showAddWorkoutDialog = false
             }
@@ -354,6 +374,14 @@ fun GymTrackerScreen(viewModel: GymViewModel = hiltViewModel()) {
             }
         )
     }
+
+    if (showTimerDialog) {
+        TimerDialog(onDismiss = { showTimerDialog = false })
+    }
+
+    if (showStopwatchDialog) {
+        StopwatchDialog(onDismiss = { showStopwatchDialog = false })
+    }
 }
 
 @Composable
@@ -361,6 +389,7 @@ fun HistorySection(
     logs: List<WorkoutEntity>,
     onEdit: (WorkoutEntity) -> Unit,
     onDelete: (WorkoutEntity) -> Unit,
+    onDeleteGroup: (WorkoutEntity) -> Unit,
     onSaveTemplate: (WorkoutEntity) -> Unit
 ) {
     if (logs.isEmpty()) {
@@ -376,9 +405,40 @@ fun HistorySection(
             }
         }
     } else {
+        val groupedLogs = logs.groupBy { "${it.date}_${it.workoutName}" }
+        
         LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(logs) { log ->
-                HistoryLogCard(log, onEdit = { onEdit(log) }, onDelete = { onDelete(log) }, onSaveTemplate = { onSaveTemplate(log) })
+            groupedLogs.forEach { (_, logsInGroup) ->
+                val firstLog = logsInGroup.first()
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${firstLog.date} - ${firstLog.workoutName}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = { onDeleteGroup(firstLog) }) {
+                            Icon(Icons.Default.DeleteForever, "Delete Group", tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+                items(logsInGroup) { log ->
+                    HistoryLogCard(
+                        log = log, 
+                        onEdit = { onEdit(log) }, 
+                        onDelete = { onDelete(log) }, 
+                        onSaveTemplate = { onSaveTemplate(log) }
+                    )
+                }
+                item {
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                }
             }
         }
     }
@@ -397,6 +457,50 @@ fun WorkoutSection(
     onStartTodayPlan: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
+        // Chest Part Image Insertion
+        val currentGroup = when (val state = navState) {
+            is GymViewModel.GymNavState.SubCategories -> state.muscleGroup
+            else -> null
+        }
+
+        if (currentGroup != null) {
+            val imageRes = when (currentGroup) {
+                MuscleGroup.CHEST -> R.drawable.chest
+                MuscleGroup.BACK -> R.drawable.back
+                MuscleGroup.BICEPS -> R.drawable.biceps
+                MuscleGroup.TRICEPS -> R.drawable.triceps
+                MuscleGroup.SHOULDERS -> R.drawable.shoulders
+                MuscleGroup.LEGS -> R.drawable.legs
+                MuscleGroup.FOREARMS -> R.drawable.forearms
+                MuscleGroup.ABS -> R.drawable.abs
+            }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                elevation = CardDefaults.cardElevation(4.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column {
+                    Image(
+                        painter = painterResource(id = imageRes),
+                        contentDescription = "${currentGroup.displayName} Anatomy",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp),
+                        contentScale = ContentScale.FillWidth
+                    )
+                    Text(
+                        text = "${currentGroup.displayName} Training",
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
         if (navState is GymViewModel.GymNavState.MuscleGroups && todayPlan.isNotEmpty()) {
             TodayPlanCard(todayPlan, onStartTodayPlan)
         }
@@ -413,7 +517,28 @@ fun WorkoutSection(
             is GymViewModel.GymNavState.MuscleGroups -> {
                 LazyColumn(modifier = Modifier.fillMaxWidth()) {
                     items(MuscleGroup.entries) { group ->
-                        FolderItem(title = group.displayName, onClick = { onMuscleGroupClick(group) })
+                        val imageRes = when (group) {
+                            MuscleGroup.CHEST -> R.drawable.chest
+                            MuscleGroup.BACK -> R.drawable.back
+                            MuscleGroup.BICEPS -> R.drawable.biceps
+                            MuscleGroup.TRICEPS -> R.drawable.triceps
+                            MuscleGroup.SHOULDERS -> R.drawable.shoulders
+                            MuscleGroup.LEGS -> R.drawable.legs
+                            MuscleGroup.FOREARMS -> R.drawable.forearms
+                            MuscleGroup.ABS -> R.drawable.abs
+                        }
+                        FolderItem(
+                            title = group.displayName, 
+                            icon = {
+                                Image(
+                                    painter = painterResource(id = imageRes),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(32.dp).clip(CircleShape),
+                                    contentScale = ContentScale.Crop
+                                )
+                            },
+                            onClick = { onMuscleGroupClick(group) }
+                        )
                     }
                 }
             }
@@ -520,8 +645,11 @@ fun CalendarView(
             IconButton(onClick = { onMonthChange(currentMonth.minusMonths(1)) }) {
                 Icon(Icons.Default.ChevronLeft, contentDescription = "Prev Month")
             }
+            val configuration = LocalConfiguration.current
+            val locale = configuration.locales[0]
+            val monthName = currentMonth.month.getDisplayName(TextStyle.FULL, locale)
             Text(
-                text = "${currentMonth.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${currentMonth.year}",
+                text = "$monthName ${currentMonth.year}",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
@@ -660,6 +788,9 @@ fun HistoryLogCard(
                     style = MaterialTheme.typography.bodyLarge
                 )
             }
+            if (!log.notes.isNullOrBlank()) {
+                Text(text = "Notes: ${log.notes}", style = MaterialTheme.typography.bodySmall, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
+            }
         }
     }
 }
@@ -796,7 +927,7 @@ fun EditWorkoutDialog(
 }
 
 @Composable
-fun FolderItem(title: String, onClick: () -> Unit) {
+fun FolderItem(title: String, icon: @Composable (() -> Unit)? = null, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -808,7 +939,11 @@ fun FolderItem(title: String, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                if (icon != null) {
+                    icon()
+                } else {
+                    Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                }
                 Spacer(modifier = Modifier.width(16.dp))
                 Text(text = title, style = MaterialTheme.typography.bodyLarge)
             }
@@ -825,7 +960,13 @@ fun ExerciseCard(exercise: Exercise, onLogClick: () -> Unit) {
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
         Column {
-            if (exercise.imageUrl.isNotBlank()) {
+            val showImage = when (val img = exercise.imageUrl) {
+                is String -> img.isNotBlank()
+                is Int -> img != 0
+                else -> img != null
+            }
+
+            if (showImage) {
                 AsyncImage(
                     model = exercise.imageUrl,
                     contentDescription = exercise.name,
@@ -867,25 +1008,37 @@ fun WorkoutEntryDialog(
                     Spacer(modifier = Modifier.height(8.dp))
                 }
                 setsList.forEachIndexed { index, set ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(text = "Set ${index + 1}", modifier = Modifier.width(50.dp))
+                    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "Set ${index + 1}", modifier = Modifier.width(50.dp), fontWeight = FontWeight.Bold)
+                            OutlinedTextField(
+                                value = if (set.weight == 0f || set.weight == null) "" else set.weight.toString(),
+                                onValueChange = { val w = it.toFloatOrNull(); setsList = setsList.toMutableList().also { l -> l[index] = set.copy(weight = w) } },
+                                label = { Text("kg") },
+                                modifier = Modifier.weight(1f),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            OutlinedTextField(
+                                value = set.reps.toString(),
+                                onValueChange = { val r = it.toIntOrNull() ?: 0; setsList = setsList.toMutableList().also { l -> l[index] = set.copy(reps = r) } },
+                                label = { Text("reps") },
+                                modifier = Modifier.weight(1f),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                        }
                         OutlinedTextField(
-                            value = if (set.weight == 0f) "" else set.weight.toString(),
-                            onValueChange = { val w = it.toFloatOrNull() ?: 0f; setsList = setsList.toMutableList().also { l -> l[index] = set.copy(weight = w) } },
-                            label = { Text("kg") },
-                            modifier = Modifier.weight(1f),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        OutlinedTextField(
-                            value = set.reps.toString(),
-                            onValueChange = { val r = it.toIntOrNull() ?: 0; setsList = setsList.toMutableList().also { l -> l[index] = set.copy(reps = r) } },
-                            label = { Text("reps") },
-                            modifier = Modifier.weight(1f),
+                            value = set.restTimeSeconds?.toString() ?: "",
+                            onValueChange = { val r = it.toIntOrNull(); setsList = setsList.toMutableList().also { l -> l[index] = set.copy(restTimeSeconds = r) } },
+                            label = { Text("Rest (s)") },
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                        OutlinedTextField(
+                            value = set.notes ?: "",
+                            onValueChange = { n -> setsList = setsList.toMutableList().also { l -> l[index] = set.copy(notes = n) } },
+                            label = { Text("Notes") },
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                         )
                     }
                 }

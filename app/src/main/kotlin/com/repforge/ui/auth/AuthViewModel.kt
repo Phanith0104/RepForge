@@ -6,6 +6,7 @@ import com.repforge.data.local.entities.UserEntity
 import com.repforge.data.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import android.app.Activity
+import android.util.Patterns
 import com.google.firebase.auth.PhoneAuthCredential
 import com.google.firebase.auth.PhoneAuthProvider
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,14 +54,25 @@ class AuthViewModel @Inject constructor(
     }
 
     fun login(email: String, password: String) {
+        if (email.isBlank() || !Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()) {
+            _error.value = "Please enter a valid email address."
+            return
+        }
+        if (password.length < 6) {
+            _error.value = "Password must be at least 6 characters."
+            return
+        }
+
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
             try {
-                val result = userRepository.loginWithEmail(email, password)
+                val result = userRepository.loginWithEmail(email.trim(), password)
                 if (result.isFailure) {
                     _error.value = result.exceptionOrNull()?.message ?: "Unknown error"
                 }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Login failed"
             } finally {
                 _isLoading.value = false
             }
@@ -153,6 +165,30 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    fun resetPassword(email: String) {
+        if (email.isBlank() || !Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()) {
+            _error.value = "Please enter a valid email to reset password."
+            return
+        }
+        
+        viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+            try {
+                val result = userRepository.sendPasswordResetEmail(email.trim())
+                if (result.isSuccess) {
+                    _error.value = "SUCCESS:Password reset email sent."
+                } else {
+                    _error.value = result.exceptionOrNull()?.message ?: "Failed to send reset email"
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Failed to send reset email"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
     fun logout() {
         viewModelScope.launch {
             try {
@@ -178,5 +214,9 @@ class AuthViewModel @Inject constructor(
 
     fun clearError() {
         _error.value = null
+    }
+
+    fun stopLoading() {
+        _isLoading.value = false
     }
 }

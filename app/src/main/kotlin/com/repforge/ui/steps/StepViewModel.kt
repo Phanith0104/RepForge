@@ -57,31 +57,8 @@ class StepViewModel @Inject constructor(
     private val _stepGoal = MutableStateFlow(repository.getStepGoal())
     val stepGoal: StateFlow<Int> = _stepGoal
 
-    val currentStreak: StateFlow<Int> = combine(todaySteps, stepHistory, stepGoal) { today, history, goal ->
-        val stepsToday = today?.count ?: 0
-        if (stepsToday >= goal) {
-            today?.streak ?: 0
-        } else {
-            // Check yesterday's record
-            val yesterdayDate = repository.getTodayDate() // Wait, this is today
-            // I need a helper for yesterday's date or just look at history
-            // history is sorted by date DESC.
-            val latestInHistory = history.firstOrNull()
-            if (latestInHistory != null) {
-                if (latestInHistory.date == repository.getTodayDate()) {
-                    // Today is the first item. Yesterday is the second.
-                    val yesterday = history.getOrNull(1)
-                    if (yesterday != null && yesterday.count >= goal) {
-                        yesterday.streak
-                    } else 0
-                } else {
-                    // Today is NOT in history yet. Latest is yesterday or older.
-                    if (latestInHistory.count >= goal) {
-                        latestInHistory.streak
-                    } else 0
-                }
-            } else 0
-        }
+    val currentStreak: StateFlow<Int> = combine(todaySteps, stepHistory, stepGoal) { _, _, _ ->
+        repository.calculateCurrentStreak()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     fun updateStepGoal(newGoal: Int) {

@@ -8,7 +8,7 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="com.example.repforge" />
+                  <option name="appId" value="com.repforge.app" />
                   <option name="mobileSdkAppId" value="1:125160357464:android:365b6892984ff2be6d142d" />
                   <option name="projectId" value="repforge-1f892" />
                   <option name="projectNumber" value="125160357464" />

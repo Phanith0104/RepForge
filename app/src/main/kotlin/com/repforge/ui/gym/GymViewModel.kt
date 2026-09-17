@@ -2,6 +2,7 @@ package com.repforge.ui.gym
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.util.Log
 import com.repforge.data.local.exercises.*
 import com.repforge.data.repository.GymRepository
 import com.repforge.data.repository.UserRepository
@@ -147,17 +148,30 @@ class GymViewModel @Inject constructor(
         }
     }
 
-    fun logWorkout(exerciseName: String, sets: Int, reps: Int, weight: Float?, workoutName: String = "Quick Workout", date: String? = null, isCompleted: Boolean = true) {
+    fun logWorkout(
+        exerciseName: String, 
+        sets: Int, 
+        reps: Int, 
+        weight: Float?, 
+        restTime: Int? = null,
+        notes: String? = null,
+        workoutName: String = "Quick Workout", 
+        date: String? = null, 
+        isCompleted: Boolean = true
+    ) {
         viewModelScope.launch {
+            val userId = userRepository.getUser().first()?.email ?: "guest"
             gymRepository.insertWorkoutLog(
                 WorkoutEntity(
-                    userId = "", 
+                    userId = userId, 
                     workoutName = workoutName,
                     exerciseName = exerciseName,
                     date = date ?: gymRepository.getTodayDate(),
                     sets = sets,
                     reps = reps,
                     weight = weight,
+                    restTimeSeconds = restTime,
+                    notes = notes,
                     isCompleted = isCompleted
                 )
             )
@@ -201,9 +215,10 @@ class GymViewModel @Inject constructor(
         notes: String
     ) {
         viewModelScope.launch {
+            val userId = userRepository.getUser().first()?.email ?: "guest"
             gymRepository.saveCustomExercise(
                 CustomExerciseEntity(
-                    userId = "",
+                    userId = userId,
                     name = name,
                     muscleGroup = muscleGroup,
                     musclePart = musclePart,
@@ -227,12 +242,13 @@ class GymViewModel @Inject constructor(
 
     fun saveWorkoutTemplate(name: String, workouts: List<WorkoutEntity>) {
         viewModelScope.launch {
+            val userId = userRepository.getUser().first()?.email ?: "guest"
             val templateExercises = workouts.map {
                 TemplateExercise(it.exerciseName, it.sets, it.reps, it.weight)
             }
             gymRepository.saveWorkoutTemplate(
                 WorkoutTemplateEntity(
-                    userId = "",
+                    userId = userId,
                     name = name,
                     exercisesJson = gson.toJson(templateExercises)
                 )
@@ -242,22 +258,29 @@ class GymViewModel @Inject constructor(
 
     fun applyTemplateToDate(template: WorkoutTemplateEntity, date: String) {
         viewModelScope.launch {
-            val listType = object : TypeToken<List<TemplateExercise>>() {}.type
-            val exercises: List<TemplateExercise> = gson.fromJson(template.exercisesJson, listType)
-            
-            exercises.forEach {
-                gymRepository.insertWorkoutLog(
-                    WorkoutEntity(
-                        userId = "",
-                        workoutName = template.name,
-                        exerciseName = it.name,
-                        date = date,
-                        sets = it.sets,
-                        reps = it.reps,
-                        weight = it.weight,
-                        isCompleted = false
+            try {
+                if (template.exercisesJson.isBlank()) return@launch
+                
+                val listType = object : TypeToken<List<TemplateExercise>>() {}.type
+                val exercises: List<TemplateExercise> = gson.fromJson(template.exercisesJson, listType)
+                val userId = userRepository.getUser().first()?.email ?: "guest"
+                
+                exercises.forEach {
+                    gymRepository.insertWorkoutLog(
+                        WorkoutEntity(
+                            userId = userId,
+                            workoutName = template.name,
+                            exerciseName = it.name,
+                            date = date,
+                            sets = it.sets,
+                            reps = it.reps,
+                            weight = it.weight,
+                            isCompleted = false
+                        )
                     )
-                )
+                }
+            } catch (e: Exception) {
+                Log.e("GymViewModel", "Error applying template", e)
             }
         }
     }

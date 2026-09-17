@@ -60,6 +60,12 @@ class StepRepository @Inject constructor(
         prefs.edit { putInt("step_goal_${getCurrentUserId()}", goal) }
     }
 
+    fun isStepTrackingEnabled(): Boolean = prefs.getBoolean("step_tracking_enabled", true)
+
+    fun setStepTrackingEnabled(enabled: Boolean) {
+        prefs.edit { putBoolean("step_tracking_enabled", enabled) }
+    }
+
     suspend fun updateSteps(sensorSteps: Int): Int = mutex.withLock {
         val today = getTodayDate()
         val userId = getCurrentUserId()
@@ -107,9 +113,21 @@ class StepRepository @Inject constructor(
         
         val isAchievement = (todayCount > personalBest || todayCount > yesterdayCount) && todayCount > 0
 
-        // Streak Logic: Strictly continuous.
+        // Streak Logic: Strictly consecutive calendar days
         val newStreak = if (todayCount >= stepGoal) {
+            // If today is a hit, the streak is calculated including today.
+            // But since we are updating today, we should calculate what the streak would be.
+            // Actually, calculateCurrentStreak already checks today.
+            // But we haven't inserted today's new value yet!
+            
+            // Let's do a simplified check for the insertion value:
+            val yesterday = getYesterdayDate()
+            val yesterdayEntry = stepDao.getStepsForDate(yesterday, userId)
+            val yesterdayCount = yesterdayEntry?.count ?: 0
+            
             if (yesterdayCount >= stepGoal) {
+                // If yesterday was a hit, we look at yesterday's stored streak and add 1.
+                // This assumes yesterday's streak was correct.
                 (yesterdayEntry?.streak ?: 0) + 1
             } else {
                 1
@@ -177,22 +195,55 @@ class StepRepository @Inject constructor(
     suspend fun deleteHistoryRecord(date: String) {
         val userId = getCurrentUserId()
         stepDao.deleteStepsForDate(date, userId)
-        recalculateStreaks(userId)
+        // Streak is calculated on the fly now, so no need to update all records
     }
 
-    private suspend fun recalculateStreaks(userId: String) {
-        val allHistory = stepDao.getAllStepsList(userId).reversed() // Oldest first
-        var currentStreak = 0
+    suspend fun calculateCurrentStreak(): Int {
+        val userId = getCurrentUserId()
+        val allHistory = stepDao.getAllStepsList(userId)
+            .sortedByDescending { it.date } // Newest first
         val stepGoal = getStepGoal()
+        val today = LocalDate.now()
+        val yesterday = today.minusDays(1)
+        
+        // Find today's and yesterday's entries
+        val todayEntry = allHistory.find { it.date == today.toString() }
+        val yesterdayEntry = allHistory.find { it.date == yesterday.toString() }
 
-        allHistory.forEach { entity ->
-            val count = entity.count
-            if (count >= stepGoal) {
-                currentStreak++
-            } else {
-                currentStreak = 0
+        val todayHit = todayEntry != null && todayEntry.count >= stepGoal
+        val yesterdayHit = yesterdayEntry != null && yesterdayEntry.count >= stepGoal
+
+        var streak = 0
+        var checkDate: LocalDate
+
+        if (todayHit) {
+            streak = 1
+            checkDate = yesterday
+            // Check backwards from yesterday
+            while (true) {
+                val entry = allHistory.find { it.date == checkDate.toString() }
+                if (entry != null && entry.count >= stepGoal) {
+                    streak++
+                    checkDate = checkDate.minusDays(1)
+                } else {
+                    break
+                }
             }
-            stepDao.insertOrUpdateSteps(entity.copy(streak = currentStreak))
+        } else if (yesterdayHit) {
+            // Today not hit, but yesterday was. The streak is what it was yesterday.
+            streak = 1
+            checkDate = yesterday.minusDays(1)
+            while (true) {
+                val entry = allHistory.find { it.date == checkDate.toString() }
+                if (entry != null && entry.count >= stepGoal) {
+                    streak++
+                    checkDate = checkDate.minusDays(1)
+                } else {
+                    break
+                }
+            }
         }
+        
+        return streak
     }
 }

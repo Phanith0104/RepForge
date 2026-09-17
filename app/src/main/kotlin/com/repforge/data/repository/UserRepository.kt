@@ -12,6 +12,8 @@ import com.repforge.data.local.entities.UserEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
+import java.net.ConnectException
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -256,11 +258,19 @@ class UserRepository @Inject constructor(
     }
 
     private fun mapFirebaseException(e: Exception): Exception {
+        Log.e(TAG, "Mapping Firebase Exception: ${e.message}", e)
         if (e is FirebaseAuthException) {
             val message = when (e.errorCode) {
-                "ERROR_WRONG_PASSWORD" -> "Incorrect password."
-                "ERROR_USER_NOT_FOUND" -> "No user found."
-                "ERROR_INVALID_VERIFICATION_CODE" -> "Invalid OTP."
+                "ERROR_WRONG_PASSWORD" -> "Incorrect password. Please try again."
+                "ERROR_USER_NOT_FOUND" -> "No account found with this email."
+                "ERROR_USER_DISABLED" -> "This account has been disabled."
+                "ERROR_TOO_MANY_REQUESTS" -> "Too many attempts. Please try again later."
+                "ERROR_OPERATION_NOT_ALLOWED" -> "Login method not enabled."
+                "ERROR_WEAK_PASSWORD" -> "Password is too weak."
+                "ERROR_EMAIL_ALREADY_IN_USE" -> "An account already exists with this email."
+                "ERROR_INVALID_EMAIL" -> "Invalid email address."
+                "ERROR_INVALID_VERIFICATION_CODE" -> "Invalid OTP code."
+                "ERROR_SESSION_EXPIRED" -> "Verification code expired. Please request a new one."
                 else -> e.message ?: "Authentication failed."
             }
             return Exception(message)
@@ -268,11 +278,16 @@ class UserRepository @Inject constructor(
         if (e is FirebaseFirestoreException) {
             return when (e.code) {
                 FirebaseFirestoreException.Code.PERMISSION_DENIED -> 
-                    Exception("Permission denied. Ensure your Firestore rules allow access to /users/{userId} for authenticated users.")
+                    Exception("Access denied. Please check your account permissions.")
                 FirebaseFirestoreException.Code.UNAVAILABLE ->
-                    Exception("Firestore service is temporarily unavailable. Please check your internet.")
-                else -> Exception("Firestore error: ${e.message}")
+                    Exception("Network unavailable. Please check your internet connection.")
+                FirebaseFirestoreException.Code.DEADLINE_EXCEEDED ->
+                    Exception("Request timed out. Please try again.")
+                else -> Exception("Database error: ${e.message}")
             }
+        }
+        if (e is UnknownHostException || e is ConnectException) {
+            return Exception("No internet connection. Please check your connection and try again.")
         }
         return e
     }
@@ -284,5 +299,14 @@ class UserRepository @Inject constructor(
     
     suspend fun removeProfile(email: String) {
         userDao.removeUser(email)
+    }
+
+    suspend fun sendPasswordResetEmail(email: String): Result<Unit> {
+        return try {
+            firebaseAuth.sendPasswordResetEmail(email).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(mapFirebaseException(e))
+        }
     }
 }
