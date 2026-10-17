@@ -12,6 +12,7 @@ import com.repforge.data.local.entities.WorkoutTemplateEntity
 import com.repforge.domain.model.Exercise
 import com.repforge.domain.model.MuscleGroup
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -84,6 +85,7 @@ class GymViewModel @Inject constructor(
     val todayPlan: StateFlow<List<WorkoutEntity>> = gymRepository.getPlannedWorkoutsForDate(gymRepository.getTodayDate())
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     val plannedWorkoutsForSelectedDate: StateFlow<List<WorkoutEntity>> = _selectedDate.flatMapLatest { date ->
         gymRepository.getPlannedWorkoutsForDate(date)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.hardware.Sensor
@@ -126,8 +125,6 @@ class StepCounterService : Service(), SensorEventListener {
                     notification,
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
                 )
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH)
             } else {
                 startForeground(1, notification)
             }

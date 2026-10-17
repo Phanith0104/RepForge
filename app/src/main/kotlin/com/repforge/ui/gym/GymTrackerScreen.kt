@@ -13,6 +13,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.EventNote
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -27,7 +29,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -43,7 +44,6 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
-import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -158,7 +158,7 @@ fun GymTrackerScreen(viewModel: GymViewModel = hiltViewModel()) {
         floatingActionButton = {
             if (selectedTab == GymViewModel.GymTab.WORKOUT && navState is GymViewModel.GymNavState.MuscleGroups) {
                 FloatingActionButton(onClick = { showAddWorkoutDialog = true }) {
-                    Icon(Icons.Default.PlaylistAdd, contentDescription = "Add Workout Plan")
+                    Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = "Add Workout Plan")
                 }
             } else if (selectedTab == GymViewModel.GymTab.HISTORY) {
                 FloatingActionButton(onClick = { viewModel.selectTab(GymViewModel.GymTab.WORKOUT) }) {
@@ -168,7 +168,7 @@ fun GymTrackerScreen(viewModel: GymViewModel = hiltViewModel()) {
                 FloatingActionButton(onClick = { 
                     showLogDialog = true; selectedExercise = null 
                 }) {
-                    Icon(Icons.Default.EventNote, contentDescription = "Plan Workout")
+                    Icon(Icons.AutoMirrored.Filled.EventNote, contentDescription = "Plan Workout")
                 }
             }
         }
@@ -327,7 +327,7 @@ fun GymTrackerScreen(viewModel: GymViewModel = hiltViewModel()) {
     if (showAddWorkoutDialog) {
         AddWorkoutDialog(
             onDismiss = { showAddWorkoutDialog = false },
-            onSave = { name, list ->
+            onSave = { name, _ ->
                 viewModel.saveWorkoutTemplate(name, emptyList()) 
                 showAddWorkoutDialog = false
             }
@@ -963,7 +963,7 @@ fun ExerciseCard(exercise: Exercise, onLogClick: () -> Unit) {
             val showImage = when (val img = exercise.imageUrl) {
                 is String -> img.isNotBlank()
                 is Int -> img != 0
-                else -> img != null
+                else -> true
             }
 
             if (showImage) {

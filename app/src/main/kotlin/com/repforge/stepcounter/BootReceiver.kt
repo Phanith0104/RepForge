@@ -31,15 +31,11 @@ class BootReceiver : BroadcastReceiver() {
                     Log.d("BootReceiver", "Step tracking enabled and permission granted. Attempting to start service.")
                     val serviceIntent = Intent(context, StepCounterService::class.java)
                     
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        try {
-                            context.startForegroundService(serviceIntent)
-                        } catch (e: Exception) {
-                            Log.e("BootReceiver", "Background start restriction: ${e.message}")
-                            // Fallback: If it fails, the service will start next time the user opens the app
-                        }
-                    } else {
-                        context.startService(serviceIntent)
+                    try {
+                        context.startForegroundService(serviceIntent)
+                    } catch (e: Exception) {
+                        Log.e("BootReceiver", "Background start restriction: ${e.message}")
+                        // Fallback: If it fails, the service will start next time the user opens the app
                     }
                 } else {
                     Log.d("BootReceiver", "Step tracking disabled or permission missing. Skipping service start.")

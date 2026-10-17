@@ -53,6 +53,7 @@ import com.repforge.data.local.entities.UserEntity
 private const val TAG = "LOGIN_SCREEN"
 
 enum class AuthMethod { SELECTION, EMAIL, PHONE }
+enum class EmailMode { LOGIN, REGISTER }
 
 @Composable
 fun LoginScreen(
@@ -68,6 +69,15 @@ fun LoginScreen(
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
 
+    val webClientId = remember(context) {
+        try {
+            val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
+            if (resId != 0) context.resources.getString(resId) else "125160357464-cpptkjvmdaftu2dianfqk7afjbn5p5g5.apps.googleusercontent.com"
+        } catch (e: Exception) {
+            "125160357464-cpptkjvmdaftu2dianfqk7afjbn5p5g5.apps.googleusercontent.com"
+        }
+    }
+
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -75,12 +85,26 @@ fun LoginScreen(
             val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
             try {
                 val account = task.getResult(ApiException::class.java)
-                account?.idToken?.let { viewModel.signInWithGoogle(it) } ?: run {
+                val idToken = account?.idToken
+                if (idToken != null) {
+                    viewModel.signInWithGoogle(idToken)
+                } else {
                     viewModel.stopLoading()
+                    viewModel.setError("Google Sign-In failed: No ID Token received from Google.")
                 }
             } catch (e: ApiException) {
-                Log.e(TAG, "Google Sign-In failed", e)
+                Log.e(TAG, "Google Sign-In failed with status code: ${e.statusCode}", e)
                 viewModel.stopLoading()
+                val message = when (e.statusCode) {
+                    12500 -> "Google Sign-In failed: Play Services configuration error."
+                    7 -> "Google Sign-In failed: Network error. Please check your internet connection."
+                    10 -> "Google Sign-In failed: Developer configuration error (SHA-1 fingerprint)."
+                    12501 -> "Google Sign-In was cancelled."
+                    else -> "Google Sign-In failed (${e.statusCode}): ${e.localizedMessage}"
+                }
+                if (e.statusCode != 12501) {
+                    viewModel.setError(message)
+                }
             }
         } else {
             viewModel.stopLoading()
@@ -107,11 +131,15 @@ fun LoginScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { authMethod = AuthMethod.SELECTION }) {
+                    IconButton(onClick = { 
+                        authMethod = AuthMethod.SELECTION
+                        viewModel.resetPhoneState()
+                        viewModel.clearError()
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                     Text(
-                        text = if (authMethod == AuthMethod.EMAIL) "Email Login" else "Phone Login",
+                        text = if (authMethod == AuthMethod.EMAIL) "Email Authentication" else "Phone Authentication",
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.onBackground
                     )
@@ -139,10 +167,15 @@ fun LoginScreen(
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Show error/success banner on all screens
+            if (error != null) {
+                AuthStatusBanner(message = error!!, onDismiss = { viewModel.clearError() })
+                Spacer(modifier = Modifier.height(16.dp))
+            }
 
             if (authMethod == AuthMethod.SELECTION) {
-                // Main Selection UI
                 if (savedProfiles.isNotEmpty()) {
                     Text(
                         text = "Recent Sessions",
@@ -157,15 +190,22 @@ fun LoginScreen(
                     ) {
                         items(savedProfiles) { profile ->
                             RecentUserItem(profile, screenWidth, onClick = {
-                                // Pre-fill logic can be added here
+                                if (profile.provider == "guest") {
+                                    viewModel.loginAsGuest()
+                                } else {
+                                    authMethod = AuthMethod.EMAIL
+                                }
                             })
                         }
                     }
-                    Spacer(modifier = Modifier.height(32.dp))
+                    Spacer(modifier = Modifier.height(24.dp))
                 }
 
                 Button(
-                    onClick = { authMethod = AuthMethod.EMAIL },
+                    onClick = { 
+                        authMethod = AuthMethod.EMAIL
+                        viewModel.clearError()
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -174,10 +214,14 @@ fun LoginScreen(
                     Text("Continue with Email")
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Button(
-                    onClick = { authMethod = AuthMethod.PHONE },
+                    onClick = { 
+                        authMethod = AuthMethod.PHONE
+                        viewModel.resetPhoneState()
+                        viewModel.clearError()
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -192,9 +236,10 @@ fun LoginScreen(
 
                 OutlinedButton(
                     onClick = {
+                        viewModel.clearError()
                         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                             .requestEmail()
-                            .requestIdToken("125160357464-cpptkjvmdaftu2dianfqk7afjbn5p5g5.apps.googleusercontent.com")
+                            .requestIdToken(webClientId)
                             .build()
                         val client = GoogleSignIn.getClient(context, gso)
                         googleSignInLauncher.launch(client.signInIntent)
@@ -217,7 +262,7 @@ fun LoginScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 TextButton(
                     onClick = { viewModel.loginAsGuest() },
@@ -226,31 +271,60 @@ fun LoginScreen(
                     Text("Continue as Guest", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
                 }
             } else {
-                // Sub-auth fields
-                if (error != null) {
-                    val isSuccess = error!!.startsWith("SUCCESS:")
-                    val displayError = if (isSuccess) error!!.substring(8) else error!!
-                    
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isSuccess) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.errorContainer
-                        )
-                    ) {
-                        Text(
-                            text = displayError,
-                            color = if (isSuccess) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.padding(12.dp),
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
-
                 if (authMethod == AuthMethod.EMAIL) {
                     EmailAuthFields(viewModel, isLoading)
                 } else {
                     PhoneAuthFields(viewModel, isLoading, isCodeSent)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun AuthStatusBanner(message: String, onDismiss: () -> Unit) {
+    val isSuccess = message.startsWith("SUCCESS:")
+    val displayMessage = if (isSuccess) message.substring(8) else message
+    
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSuccess) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.errorContainer
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = if (isSuccess) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onErrorContainer
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = displayMessage,
+                    color = if (isSuccess) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onErrorContainer,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Dismiss",
+                    tint = if (isSuccess) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onErrorContainer
+                )
             }
         }
     }
@@ -301,8 +375,10 @@ fun RecentUserItem(user: UserEntity, screenWidth: Dp, onClick: () -> Unit) {
 
 @Composable
 fun EmailAuthFields(viewModel: AuthViewModel, isLoading: Boolean) {
+    var mode by remember { mutableStateOf(EmailMode.LOGIN) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     
     val focusManager = LocalFocusManager.current
@@ -310,11 +386,43 @@ fun EmailAuthFields(viewModel: AuthViewModel, isLoading: Boolean) {
 
     val isEmailValid = email.isNotBlank() && Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()
     val isPasswordValid = password.length >= 6
+    val isConfirmValid = mode == EmailMode.LOGIN || (password == confirmPassword && confirmPassword.isNotEmpty())
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly
+    ) {
+        FilterChip(
+            selected = mode == EmailMode.LOGIN,
+            onClick = { 
+                mode = EmailMode.LOGIN
+                viewModel.clearError()
+            },
+            label = { Text("Log In", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        FilterChip(
+            selected = mode == EmailMode.REGISTER,
+            onClick = { 
+                mode = EmailMode.REGISTER
+                viewModel.clearError()
+            },
+            label = { Text("Sign Up", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+            modifier = Modifier.weight(1f)
+        )
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
 
     OutlinedTextField(
         value = email,
         onValueChange = { email = it },
-        label = { Text("Email") },
+        label = { Text("Email Address") },
         modifier = Modifier.fillMaxWidth(),
         enabled = !isLoading,
         leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
@@ -329,7 +437,7 @@ fun EmailAuthFields(viewModel: AuthViewModel, isLoading: Boolean) {
         shape = RoundedCornerShape(12.dp)
     )
 
-    Spacer(modifier = Modifier.height(8.dp))
+    Spacer(modifier = Modifier.height(12.dp))
 
     OutlinedTextField(
         value = password,
@@ -347,13 +455,18 @@ fun EmailAuthFields(viewModel: AuthViewModel, isLoading: Boolean) {
         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(
             keyboardType = KeyboardType.Password,
-            imeAction = ImeAction.Done
+            imeAction = if (mode == EmailMode.REGISTER) ImeAction.Next else ImeAction.Done
         ),
         keyboardActions = KeyboardActions(
+            onNext = { focusManager.moveFocus(FocusDirection.Down) },
             onDone = { 
-                if (isEmailValid && isPasswordValid) {
+                if (isEmailValid && isPasswordValid && isConfirmValid) {
                     keyboardController?.hide()
-                    viewModel.login(email.trim(), password)
+                    if (mode == EmailMode.LOGIN) {
+                        viewModel.login(email.trim(), password)
+                    } else {
+                        viewModel.register(email.trim(), password)
+                    }
                 }
             }
         ),
@@ -361,33 +474,61 @@ fun EmailAuthFields(viewModel: AuthViewModel, isLoading: Boolean) {
         shape = RoundedCornerShape(12.dp)
     )
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End
-    ) {
-        TextButton(
-            onClick = { 
-                if (isEmailValid) {
-                    viewModel.resetPassword(email.trim())
-                } else {
-                    // Could show a specific tip to enter email first
+    if (mode == EmailMode.REGISTER) {
+        Spacer(modifier = Modifier.height(12.dp))
+
+        OutlinedTextField(
+            value = confirmPassword,
+            onValueChange = { confirmPassword = it },
+            label = { Text("Confirm Password") },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isLoading,
+            leadingIcon = { Icon(Icons.Default.LockReset, contentDescription = null) },
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    if (isEmailValid && isPasswordValid && isConfirmValid) {
+                        keyboardController?.hide()
+                        viewModel.register(email.trim(), password)
+                    }
                 }
-            },
-            enabled = !isLoading
-        ) {
-            Text("Forgot Password?", style = MaterialTheme.typography.bodySmall)
-        }
+            ),
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp)
+        )
     }
 
-    Spacer(modifier = Modifier.height(16.dp))
+    if (mode == EmailMode.LOGIN) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(
+                onClick = { viewModel.resetPassword(email.trim()) },
+                enabled = !isLoading
+            ) {
+                Text("Forgot Password?", style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    } else {
+        Spacer(modifier = Modifier.height(12.dp))
+    }
 
     Button(
         onClick = { 
             keyboardController?.hide()
-            viewModel.login(email.trim(), password) 
+            if (mode == EmailMode.LOGIN) {
+                viewModel.login(email.trim(), password) 
+            } else {
+                viewModel.register(email.trim(), password)
+            }
         },
         modifier = Modifier.fillMaxWidth(),
-        enabled = !isLoading && isEmailValid && isPasswordValid,
+        enabled = !isLoading && isEmailValid && isPasswordValid && isConfirmValid,
         shape = RoundedCornerShape(12.dp)
     ) {
         if (isLoading) {
@@ -397,7 +538,7 @@ fun EmailAuthFields(viewModel: AuthViewModel, isLoading: Boolean) {
                 strokeWidth = 2.dp
             )
         } else {
-            Text("Login / Sign Up")
+            Text(if (mode == EmailMode.LOGIN) "Log In" else "Create Account")
         }
     }
 }
@@ -412,9 +553,9 @@ fun PhoneAuthFields(viewModel: AuthViewModel, isLoading: Boolean, isCodeSent: Bo
     if (!isCodeSent) {
         OutlinedTextField(
             value = phoneNumber,
-            onValueChange = { if (it.all { c -> c.isDigit() || c == '+' }) phoneNumber = it },
+            onValueChange = { if (it.all { c -> c.isDigit() || c == '+' || c == ' ' }) phoneNumber = it },
             label = { Text("Phone Number") },
-            placeholder = { Text("+91XXXXXXXXXX") },
+            placeholder = { Text("e.g. 9876543210 or +919876543210") },
             modifier = Modifier.fillMaxWidth(),
             enabled = !isLoading,
             leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
@@ -424,7 +565,7 @@ fun PhoneAuthFields(viewModel: AuthViewModel, isLoading: Boolean, isCodeSent: Bo
             ),
             keyboardActions = KeyboardActions(
                 onSend = {
-                    if (phoneNumber.isNotBlank()) {
+                    if (phoneNumber.filter { it.isDigit() }.length >= 10) {
                         keyboardController?.hide()
                         viewModel.verifyPhone(context as Activity, phoneNumber)
                     }
@@ -434,17 +575,17 @@ fun PhoneAuthFields(viewModel: AuthViewModel, isLoading: Boolean, isCodeSent: Bo
             shape = RoundedCornerShape(12.dp)
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
         Button(
             onClick = { 
-                if (phoneNumber.isNotBlank()) {
+                if (phoneNumber.filter { it.isDigit() }.length >= 10) {
                     keyboardController?.hide()
                     viewModel.verifyPhone(context as Activity, phoneNumber) 
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            enabled = !isLoading && phoneNumber.isNotBlank(),
+            enabled = !isLoading && phoneNumber.filter { it.isDigit() }.length >= 10,
             shape = RoundedCornerShape(12.dp)
         ) {
             if (isLoading) {
@@ -454,12 +595,21 @@ fun PhoneAuthFields(viewModel: AuthViewModel, isLoading: Boolean, isCodeSent: Bo
             }
         }
     } else {
+        Text(
+            text = "Enter the 6-digit verification code sent to your phone:",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
         OutlinedTextField(
             value = otpCode,
             onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) otpCode = it },
             label = { Text("6-Digit Code") },
+            placeholder = { Text("123456") },
             modifier = Modifier.fillMaxWidth(),
             enabled = !isLoading,
+            leadingIcon = { Icon(Icons.Default.Pin, contentDescription = null) },
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Number,
                 imeAction = ImeAction.Done
@@ -476,7 +626,7 @@ fun PhoneAuthFields(viewModel: AuthViewModel, isLoading: Boolean, isCodeSent: Bo
             shape = RoundedCornerShape(12.dp)
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
         Button(
             onClick = { 
@@ -495,155 +645,161 @@ fun PhoneAuthFields(viewModel: AuthViewModel, isLoading: Boolean, isCodeSent: Bo
                 Text("Verify & Login")
             }
         }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            TextButton(
+                onClick = { viewModel.resendPhoneCode(context as Activity, phoneNumber) },
+                enabled = !isLoading
+            ) {
+                Text("Resend OTP")
+            }
+            TextButton(
+                onClick = { 
+                    viewModel.resetPhoneState() 
+                    otpCode = ""
+                },
+                enabled = !isLoading
+            ) {
+                Text("Change Number")
+            }
+        }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileSetupScreen(viewModel: AuthViewModel) {
-    val user by viewModel.user.collectAsState()
-    var name by remember(user) { mutableStateOf(user?.name ?: "") }
+    var name by remember { mutableStateOf("") }
     var age by remember { mutableStateOf("") }
+    var gender by remember { mutableStateOf("Male") }
+    var phoneNumber by remember { mutableStateOf("") }
     var weight by remember { mutableStateOf("") }
     var height by remember { mutableStateOf("") }
-    var gender by remember { mutableStateOf("Male") }
-    var phoneNumber by remember(user) { mutableStateOf(user?.phoneNumber ?: "") }
-
-    val configuration = LocalConfiguration.current
-    val screenWidth = configuration.screenWidthDp.dp
-    val avatarSize = (screenWidth * 0.25f).coerceIn(80.dp, 140.dp)
-
-    val genders = listOf("Male", "Female", "Other")
-    var expanded by remember { mutableStateOf(false) }
+    val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(24.dp)
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = { viewModel.logout() }) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-            }
-            Text(text = "Complete Your Profile", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
+        Text("Complete Your Profile", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        Text("Help us tailor your workout experience", fontSize = 14.sp, color = MaterialTheme.colorScheme.secondary)
 
-        Box(
-            modifier = Modifier
-                .size(avatarSize)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center
-        ) {
-            if (user?.photoUrl != null) {
-                AsyncImage(
-                    model = user?.photoUrl,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+        Spacer(modifier = Modifier.height(24.dp))
+
+        if (error != null) {
+            AuthStatusBanner(message = error!!, onDismiss = { viewModel.clearError() })
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("Full Name") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp)
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(
+                value = age,
+                onValueChange = { if (it.all { c -> c.isDigit() }) age = it },
+                label = { Text("Age") },
+                modifier = Modifier.weight(1f),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            var expanded by remember { mutableStateOf(false) }
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = !expanded },
+                modifier = Modifier.weight(1f)
+            ) {
+                OutlinedTextField(
+                    value = gender,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Gender") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true),
+                    shape = RoundedCornerShape(12.dp)
                 )
-            } else {
-                Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(avatarSize * 0.6f))
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    DropdownMenuItem(text = { Text("Male") }, onClick = { gender = "Male"; expanded = false })
+                    DropdownMenuItem(text = { Text("Female") }, onClick = { gender = "Female"; expanded = false })
+                    DropdownMenuItem(text = { Text("Other") }, onClick = { gender = "Other"; expanded = false })
+                }
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "This helps us calculate your BMI and personalize your experience", 
-            fontSize = 14.sp, 
-            color = Color.Gray,
-            textAlign = TextAlign.Center
-        )
-        
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         OutlinedTextField(
-            value = name, 
-            onValueChange = { name = it }, 
-            label = { Text("Full Name") }, 
+            value = phoneNumber,
+            onValueChange = { phoneNumber = it },
+            label = { Text("Phone Number") },
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(
-            value = age, 
-            onValueChange = { if (it.all { c -> c.isDigit() }) age = it }, 
-            label = { Text("Age") }, 
-            modifier = Modifier.fillMaxWidth(), 
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            shape = RoundedCornerShape(12.dp)
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Row(modifier = Modifier.fillMaxWidth()) {
-            OutlinedTextField(
-                value = weight, 
-                onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) weight = it }, 
-                label = { Text("Weight (kg)") }, 
-                modifier = Modifier.weight(1f), 
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                shape = RoundedCornerShape(12.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            OutlinedTextField(
-                value = height, 
-                onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) height = it }, 
-                label = { Text("Height (cm)") }, 
-                modifier = Modifier.weight(1f), 
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                shape = RoundedCornerShape(12.dp)
-            )
-        }
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(
-            value = phoneNumber, 
-            onValueChange = { phoneNumber = it }, 
-            label = { Text("Phone Number") }, 
-            modifier = Modifier.fillMaxWidth(), 
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+            singleLine = true,
             shape = RoundedCornerShape(12.dp)
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Box(modifier = Modifier.fillMaxWidth()) {
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(
-                value = gender, 
-                onValueChange = {}, 
-                label = { Text("Gender") }, 
-                readOnly = true, 
-                modifier = Modifier.fillMaxWidth(),
-                trailingIcon = { TextButton(onClick = { expanded = true }) { Text("Select") } },
+                value = weight,
+                onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) weight = it },
+                label = { Text("Weight (kg)") },
+                modifier = Modifier.weight(1f),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
                 shape = RoundedCornerShape(12.dp)
             )
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                genders.forEach { g -> DropdownMenuItem(text = { Text(g) }, onClick = { gender = g; expanded = false }) }
-            }
+
+            OutlinedTextField(
+                value = height,
+                onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) height = it },
+                label = { Text("Height (cm)") },
+                modifier = Modifier.weight(1f),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp)
+            )
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         Button(
             onClick = {
                 viewModel.updateProfile(name, age.toIntOrNull() ?: 0, gender, phoneNumber, weight.toFloatOrNull() ?: 0f, height.toFloatOrNull() ?: 0f)
             },
             modifier = Modifier.fillMaxWidth(),
-            enabled = name.isNotBlank() && age.isNotBlank() && weight.isNotBlank() && height.isNotBlank(),
+            enabled = !isLoading && name.isNotBlank() && age.isNotBlank() && weight.isNotBlank() && height.isNotBlank(),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Text("Start My Journey")
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+            } else {
+                Text("Start My Journey")
+            }
         }
     }
-}
-
-@Composable
-fun TextAlign(textAlign: TextAlign) {
-    // This is just a placeholder for the import if needed
 }
