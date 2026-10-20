@@ -23,6 +23,7 @@ object DatabaseModule {
             RepForgeDatabase::class.java,
             "repforge_db"
         )
+            .fallbackToDestructiveMigration(true)
             .build()
     }
 
@@ -40,4 +41,7 @@ object DatabaseModule {
 
     @Provides
     fun provideWorkoutTemplateDao(database: RepForgeDatabase): WorkoutTemplateDao = database.workoutTemplateDao()
+
+    @Provides
+    fun provideCalisthenicsConfigDao(database: RepForgeDatabase): CalisthenicsConfigDao = database.calisthenicsConfigDao()
 }

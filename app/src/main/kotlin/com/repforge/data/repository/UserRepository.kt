@@ -9,7 +9,9 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.repforge.data.local.dao.UserDao
 import com.repforge.data.local.entities.UserEntity
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
 import java.net.ConnectException
@@ -30,6 +32,14 @@ class UserRepository @Inject constructor(
     fun getUser(): Flow<UserEntity?> = userDao.getLoggedInUser()
     
     fun getAllSavedProfiles(): Flow<List<UserEntity>> = userDao.getAllUsers()
+
+    fun observeAuthState(): Flow<FirebaseUser?> = callbackFlow {
+        val listener = FirebaseAuth.AuthStateListener { auth ->
+            trySend(auth.currentUser)
+        }
+        firebaseAuth.addAuthStateListener(listener)
+        awaitClose { firebaseAuth.removeAuthStateListener(listener) }
+    }
 
     suspend fun syncUserFromFirebase() {
         val firebaseUser = firebaseAuth.currentUser
@@ -140,23 +150,29 @@ class UserRepository @Inject constructor(
             )
             
             if (!user.isGuest) {
-                val firebaseUser = firebaseAuth.currentUser ?: throw Exception("Not authenticated with Firebase")
-                val userMap = mapOf(
-                    "name" to name,
-                    "age" to age,
-                    "gender" to gender,
-                    "phoneNumber" to phoneNumber,
-                    "weight" to weight,
-                    "height" to height,
-                    "email" to user.email,
-                    "photoUrl" to user.photoUrl,
-                    "provider" to user.provider,
-                    "isProfileComplete" to true,
-                    "lastLogin" to user.lastLogin
-                )
-                Log.d(TAG, "Writing profile to Firestore path: users/${firebaseUser.uid}")
-                firestore.collection("users").document(firebaseUser.uid).set(userMap).await()
-                Log.d(TAG, "Firestore write successful")
+                val firebaseUser = firebaseAuth.currentUser
+                if (firebaseUser != null) {
+                    val userMap = mapOf(
+                        "name" to name,
+                        "age" to age,
+                        "gender" to gender,
+                        "phoneNumber" to phoneNumber,
+                        "weight" to weight,
+                        "height" to height,
+                        "email" to user.email,
+                        "photoUrl" to user.photoUrl,
+                        "provider" to user.provider,
+                        "isProfileComplete" to true,
+                        "lastLogin" to user.lastLogin
+                    )
+                    try {
+                        Log.d(TAG, "Writing profile to Firestore path: users/${firebaseUser.uid}")
+                        firestore.collection("users").document(firebaseUser.uid).set(userMap).await()
+                        Log.d(TAG, "Firestore write successful")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Firestore write failed (${e.message}). Proceeding with local profile update.")
+                    }
+                }
             }
             
             userDao.insertUser(user)
@@ -229,12 +245,17 @@ class UserRepository @Inject constructor(
     private suspend fun handleAuthResult(userId: String, identifier: String, provider: String): Result<Unit> {
         return try {
             Log.d(TAG, "Fetching existing profile for UID: $userId")
-            val doc = firestore.collection("users").document(userId).get().await()
+            var doc: DocumentSnapshot? = null
+            try {
+                doc = firestore.collection("users").document(userId).get().await()
+            } catch (e: Exception) {
+                Log.w(TAG, "Firestore profile fetch failed (${e.message}). Falling back to Firebase Auth details.")
+            }
             val firebaseUser = firebaseAuth.currentUser
             
-            val user = if (doc.exists()) {
+            val user = if (doc != null && doc.exists()) {
                 UserEntity(
-                    email = doc.getString("email") ?: identifier,
+                    email = doc.getString("email") ?: identifier.ifBlank { firebaseUser?.email ?: firebaseUser?.phoneNumber ?: "user_$userId" },
                     name = doc.getString("name") ?: firebaseUser?.displayName ?: "",
                     age = doc.getLong("age")?.toInt() ?: 0,
                     gender = doc.getString("gender") ?: "Male",
@@ -250,7 +271,7 @@ class UserRepository @Inject constructor(
                 )
             } else {
                 UserEntity(
-                    email = identifier,
+                    email = identifier.ifBlank { firebaseUser?.email ?: firebaseUser?.phoneNumber ?: "user_$userId" },
                     name = firebaseUser?.displayName ?: "",
                     photoUrl = firebaseUser?.photoUrl?.toString(),
                     provider = provider,
@@ -262,9 +283,10 @@ class UserRepository @Inject constructor(
             }
             
             userDao.insertUser(user)
+            Log.d(TAG, "User session successfully saved locally: ${user.email}, isProfileComplete: ${user.isProfileComplete}")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(PERM_TAG, "Auth Profile Fetch Error: ${e.message}", e)
+            Log.e(PERM_TAG, "Auth Profile Save Error: ${e.message}", e)
             Result.failure(mapFirebaseException(e))
         }
     }

@@ -52,6 +52,18 @@ class AuthViewModel @Inject constructor(
             } finally {
                 _isLoading.value = false
             }
+
+            try {
+                userRepository.observeAuthState().collect { firebaseUser ->
+                    if (firebaseUser != null) {
+                        userRepository.syncUserFromFirebase()
+                    } else {
+                        userRepository.syncUserFromFirebase()
+                    }
+                }
+            } catch (_: Exception) {
+                // Background listener
+            }
         }
     }
 

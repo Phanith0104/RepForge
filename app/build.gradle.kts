@@ -11,7 +11,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.repforge.app"
+        applicationId = "com.example.repforge"
         minSdk = 26
         targetSdk = 37
         versionCode = 1

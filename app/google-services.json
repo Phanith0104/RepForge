@@ -9,10 +9,18 @@
       "client_info": {
         "mobilesdk_app_id": "1:125160357464:android:365b6892984ff2be6d142d",
         "android_client_info": {
-          "package_name": "com.repforge.app"
+          "package_name": "com.example.repforge"
         }
       },
       "oauth_client": [
+        {
+          "client_id": "125160357464-ebafjf2c1h4dhgqjkrjeom56g6uke384.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.repforge",
+            "certificate_hash": "fbf930d9476b309850a92f521ffdf38cea14ce53"
+          }
+        },
         {
           "client_id": "125160357464-cpptkjvmdaftu2dianfqk7afjbn5p5g5.apps.googleusercontent.com",
           "client_type": 3

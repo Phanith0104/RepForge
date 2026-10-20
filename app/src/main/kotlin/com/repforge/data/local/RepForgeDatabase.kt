@@ -3,11 +3,7 @@ package com.repforge.data.local
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
-import com.repforge.data.local.dao.StepDao
-import com.repforge.data.local.dao.UserDao
-import com.repforge.data.local.dao.WorkoutDao
-import com.repforge.data.local.dao.CustomExerciseDao
-import com.repforge.data.local.dao.WorkoutTemplateDao
+import com.repforge.data.local.dao.*
 import com.repforge.data.local.entities.*
 
 @Database(
@@ -16,9 +12,10 @@ import com.repforge.data.local.entities.*
         WorkoutEntity::class, 
         UserEntity::class, 
         CustomExerciseEntity::class, 
-        WorkoutTemplateEntity::class
+        WorkoutTemplateEntity::class,
+        CalisthenicsConfigEntity::class
     ], 
-    version = 11, 
+    version = 12, 
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -28,4 +25,5 @@ abstract class RepForgeDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
     abstract fun customExerciseDao(): CustomExerciseDao
     abstract fun workoutTemplateDao(): WorkoutTemplateDao
+    abstract fun calisthenicsConfigDao(): CalisthenicsConfigDao
 }

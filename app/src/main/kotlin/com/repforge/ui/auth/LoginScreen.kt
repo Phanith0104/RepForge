@@ -71,8 +71,7 @@ fun LoginScreen(
 
     val webClientId = remember(context) {
         try {
-            val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
-            if (resId != 0) context.resources.getString(resId) else "125160357464-cpptkjvmdaftu2dianfqk7afjbn5p5g5.apps.googleusercontent.com"
+            context.resources.getString(R.string.default_web_client_id)
         } catch (e: Exception) {
             "125160357464-cpptkjvmdaftu2dianfqk7afjbn5p5g5.apps.googleusercontent.com"
         }
@@ -237,12 +236,17 @@ fun LoginScreen(
                 OutlinedButton(
                     onClick = {
                         viewModel.clearError()
-                        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                            .requestEmail()
-                            .requestIdToken(webClientId)
-                            .build()
-                        val client = GoogleSignIn.getClient(context, gso)
-                        googleSignInLauncher.launch(client.signInIntent)
+                        try {
+                            val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                                .requestEmail()
+                                .requestIdToken(webClientId)
+                                .build()
+                            val client = GoogleSignIn.getClient(context, gso)
+                            googleSignInLauncher.launch(client.signInIntent)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error launching Google Sign-In intent", e)
+                            viewModel.setError("Could not launch Google Sign-In: ${e.localizedMessage}")
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !isLoading,
@@ -674,10 +678,11 @@ fun PhoneAuthFields(viewModel: AuthViewModel, isLoading: Boolean, isCodeSent: Bo
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileSetupScreen(viewModel: AuthViewModel) {
-    var name by remember { mutableStateOf("") }
+    val userState by viewModel.user.collectAsState()
+    var name by remember(userState?.name) { mutableStateOf(userState?.name ?: "") }
     var age by remember { mutableStateOf("") }
     var gender by remember { mutableStateOf("Male") }
-    var phoneNumber by remember { mutableStateOf("") }
+    var phoneNumber by remember(userState?.phoneNumber) { mutableStateOf(userState?.phoneNumber ?: "") }
     var weight by remember { mutableStateOf("") }
     var height by remember { mutableStateOf("") }
     val isLoading by viewModel.isLoading.collectAsState()
