@@ -144,9 +144,9 @@ class StepCounterService : Service(), SensorEventListener {
             }
         } else if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
             // Apply low-pass filter
-            gravity[0] = alpha * gravity[0] + (1 - alpha) * event.values[0]
-            gravity[1] = alpha * gravity[1] + (1 - alpha) * event.values[1]
-            gravity[2] = alpha * gravity[2] + (1 - alpha) * event.values[2]
+            gravity[0] = alpha * gravity[0] + ((1 - alpha) * event.values[0])
+            gravity[1] = alpha * gravity[1] + ((1 - alpha) * event.values[1])
+            gravity[2] = alpha * gravity[2] + ((1 - alpha) * event.values[2])
 
             val x = event.values[0] - gravity[0]
             val y = event.values[1] - gravity[1]

@@ -28,6 +28,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -49,7 +50,12 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.repforge.ui.calisthenics.CalisthenicsScreen
 import com.repforge.ui.gym.GymTrackerScreen
+import com.repforge.ui.habits.HabitsScreen
+import com.repforge.ui.home.HomeScreen
 import com.repforge.ui.steps.StepScreen
+import com.repforge.ui.theme.GoldContainer
+import com.repforge.ui.theme.GoldPrimary
+import com.repforge.ui.training.TrainingScreen
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -216,18 +222,29 @@ fun MainContent() {
 @Composable
 fun MainScreen() {
     val navController = rememberNavController()
-    val screens = listOf(Screen.StepCounter, Screen.GymTracker, Screen.Calisthenics, Screen.Profile)
+    val screens = listOf(Screen.Home, Screen.StepCounter, Screen.Training, Screen.Profile)
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ) {
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentDestination = navBackStackEntry?.destination
                 screens.forEach { screen ->
+                    val isSelected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
                     NavigationBarItem(
                         icon = { Icon(screen.icon, contentDescription = null) },
                         label = { Text(screen.title) },
-                        selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
+                        selected = isSelected,
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = GoldPrimary,
+                            selectedTextColor = GoldPrimary,
+                            indicatorColor = GoldContainer,
+                            unselectedIconColor = Color.Gray,
+                            unselectedTextColor = Color.Gray
+                        ),
                         onClick = {
                             navController.navigate(screen.route) {
                                 popUpTo(navController.graph.findStartDestination().id) {
@@ -244,20 +261,31 @@ fun MainScreen() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Screen.StepCounter.route,
+            startDestination = Screen.Home.route,
             modifier = Modifier.padding(innerPadding)
         ) {
+            composable(Screen.Home.route) {
+                HomeScreen(
+                    onNavigateToSteps = { navController.navigate(Screen.StepCounter.route) },
+                    onNavigateToTraining = { isCalisthenics ->
+                        navController.navigate(Screen.Training.route)
+                    },
+                    onNavigateToHabits = { navController.navigate(Screen.Habits.route) }
+                )
+            }
             composable(Screen.StepCounter.route) { 
                 StepScreen() 
             }
-            composable(Screen.GymTracker.route) { 
-                GymTrackerScreen() 
-            }
-            composable(Screen.Calisthenics.route) { 
-                CalisthenicsScreen() 
+            composable(Screen.Training.route) {
+                TrainingScreen()
             }
             composable(Screen.Profile.route) {
                 ProfileScreen()
+            }
+            composable(Screen.Habits.route) {
+                HabitsScreen(
+                    onBackClick = { navController.popBackStack() }
+                )
             }
         }
     }

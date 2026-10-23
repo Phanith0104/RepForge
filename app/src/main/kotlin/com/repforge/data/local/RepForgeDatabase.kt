@@ -13,9 +13,11 @@ import com.repforge.data.local.entities.*
         UserEntity::class, 
         CustomExerciseEntity::class, 
         WorkoutTemplateEntity::class,
-        CalisthenicsConfigEntity::class
+        CalisthenicsConfigEntity::class,
+        HabitEntity::class,
+        HabitLogEntity::class
     ], 
-    version = 12, 
+    version = 13, 
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -26,4 +28,5 @@ abstract class RepForgeDatabase : RoomDatabase() {
     abstract fun customExerciseDao(): CustomExerciseDao
     abstract fun workoutTemplateDao(): WorkoutTemplateDao
     abstract fun calisthenicsConfigDao(): CalisthenicsConfigDao
+    abstract fun habitDao(): HabitDao
 }

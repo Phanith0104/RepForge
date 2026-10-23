@@ -44,4 +44,7 @@ object DatabaseModule {
 
     @Provides
     fun provideCalisthenicsConfigDao(database: RepForgeDatabase): CalisthenicsConfigDao = database.calisthenicsConfigDao()
+
+    @Provides
+    fun provideHabitDao(database: RepForgeDatabase): HabitDao = database.habitDao()
 }

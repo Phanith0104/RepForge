@@ -740,7 +740,7 @@ fun ProfileSetupScreen(viewModel: AuthViewModel) {
                     readOnly = true,
                     label = { Text("Gender") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                    modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true),
+                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true),
                     shape = RoundedCornerShape(12.dp)
                 )
                 ExposedDropdownMenu(

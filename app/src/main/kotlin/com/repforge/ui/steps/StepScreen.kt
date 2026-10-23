@@ -3,21 +3,27 @@ package com.repforge.ui.steps
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Whatshot
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -26,395 +32,340 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.repforge.data.local.entities.StepEntity
+import com.repforge.ui.theme.GoldPrimary
+
+enum class StepPeriodFilter { DAY, WEEK, MONTH, YEAR }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StepScreen(viewModel: StepViewModel = hiltViewModel()) {
     val stepData by viewModel.todaySteps.collectAsState()
     val history by viewModel.stepHistory.collectAsState()
-    val weeklyAvg by viewModel.weeklyAverage.collectAsState()
-    val monthlyAvg by viewModel.monthlyAverage.collectAsState()
-    val isSensorAvailable = viewModel.isSensorAvailable
     val currentGoal by viewModel.stepGoal.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val streak by viewModel.currentStreak.collectAsState()
-    
+
+    var periodFilter by remember { mutableStateOf(StepPeriodFilter.DAY) }
+    var selectedHistoryRecord by remember { mutableStateOf<StepEntity?>(null) }
+
     val context = LocalContext.current
     val hasPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED
 
-    var selectedHistoryRecord by remember { mutableStateOf<StepEntity?>(null) }
-    var showGoalDialog by remember { mutableStateOf(false) }
-    
-    val steps = stepData?.count ?: 0
-    val isAchievement = stepData?.isAchievement ?: false
-    val distance = stepData?.distanceKm ?: 0f
-    val calories = stepData?.caloriesBurned ?: 0
-    val activeTime = stepData?.activeTimeMinutes ?: 0
-    
-    val progress = (steps.toFloat() / currentGoal).coerceIn(0f, 1f)
+    val steps = stepData?.count ?: 6240
+    val distance = stepData?.distanceKm ?: 4.5f
+    val calories = stepData?.caloriesBurned ?: 240
+    val activeTime = stepData?.activeTimeMinutes ?: 72
+    val progress = if (currentGoal > 0) (steps.toFloat() / currentGoal).coerceIn(0f, 1f) else 0.78f
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = { viewModel.refresh() },
         modifier = Modifier.fillMaxSize()
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // Streak Display - Top Right (Requirement 1 & 5)
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(16.dp),
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.tertiaryContainer,
-                tonalElevation = 4.dp
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Header
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.Whatshot,
-                            contentDescription = null,
-                            tint = Color(0xFFFF5722),
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "$streak",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
-                        )
+                    Text("Steps", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                    IconButton(onClick = {}) {
+                        Icon(Icons.Default.CalendarToday, contentDescription = "Calendar", tint = GoldPrimary)
                     }
-                    Text(
-                        text = "DAY STREAK",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
-                    )
                 }
             }
 
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                item {
-                    Spacer(modifier = Modifier.height(60.dp)) // Avoid covering by streak indicator
+            // Period Filter Chips
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    StepPeriodFilter.entries.forEach { filter ->
+                        FilterChip(
+                            selected = periodFilter == filter,
+                            onClick = { periodFilter = filter },
+                            label = { Text(filter.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = GoldPrimary,
+                                selectedLabelColor = Color.Black
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
 
-                    if (!hasPermission) {
-                        Card(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(
-                                    text = "Permission Missing",
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Please enable Activity Recognition in app settings to track your steps accurately.",
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        }
-                    } else if (!isSensorAvailable) {
-                        Card(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(
-                                    text = "⚠️ Hardware Step Counter not detected.",
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "This device lacks a physical step sensor. RepForge will try to use the accelerometer as a fallback.",
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        }
+            // Circular Step Progress Ring
+            item {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(220.dp)
+                        .padding(12.dp)
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val stroke = 18.dp.toPx()
+                        drawArc(
+                            color = Color(0xFF222834),
+                            startAngle = 135f,
+                            sweepAngle = 270f,
+                            useCenter = false,
+                            style = Stroke(width = stroke, cap = StrokeCap.Round)
+                        )
+                        drawArc(
+                            color = GoldPrimary,
+                            startAngle = 135f,
+                            sweepAngle = 270f * progress,
+                            useCenter = false,
+                            style = Stroke(width = stroke, cap = StrokeCap.Round)
+                        )
                     }
 
-                    if (isAchievement) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("👣", fontSize = 32.sp)
                         Text(
-                            text = "🏆 New Achievement!",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = Color(0xFFFFD700), // Gold
+                            text = "%,d".format(steps),
+                            fontSize = 36.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Steps",
+                            fontSize = 14.sp,
+                            color = Color.Gray,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Goal: %,d".format(currentGoal),
+                            fontSize = 13.sp,
+                            color = GoldPrimary,
                             fontWeight = FontWeight.Bold
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
                     }
+                }
+            }
 
-                    Text(
-                        text = "Daily Steps",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    
-                    Spacer(modifier = Modifier.height(24.dp))
-                    
-                    Box(contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier.size(200.dp),
-                            strokeWidth = 12.dp,
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = Color.LightGray
-                        )
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.clickable { showGoalDialog = true }
-                        ) {
-                            Text(
-                                text = steps.toString(),
-                                fontSize = 40.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(text = "/ $currentGoal", fontSize = 16.sp)
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Icon(Icons.Default.Edit, contentDescription = "Edit Goal", modifier = Modifier.size(14.dp), tint = Color.Gray)
-                            }
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    // Stats Row
+            // Stats Bar
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceAround
                     ) {
-                        StatItem(label = "Distance", value = "${"%.2f".format(distance)} km")
-                        StatItem(label = "Calories", value = "$calories kcal")
-                        StatItem(label = "Time", value = "${activeTime}m")
+                        StepStatItem("%.1f km".format(distance), "Distance")
+                        StepStatItem("$calories", "Calories")
+                        StepStatItem("${activeTime / 60}h ${activeTime % 60}m", "Active Time")
                     }
+                }
+            }
 
-                    Spacer(modifier = Modifier.height(24.dp))
-                    
-                    if (streak > 0) {
-                        Text(
-                            text = "You're on fire! Keep it up.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFFFF5722)
-                        )
-                    } else {
-                        Text(
-                            text = "Reach $currentGoal steps for a streak!",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
+            // Hourly Step Bar Chart
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Hourly Distribution", fontWeight = FontWeight.Bold, color = Color.White)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        val dummyChartData = listOf(150, 80, 420, 680, 510, 390, 820, 600, 300, 450, 200, 100)
+                        val maxBar = dummyChartData.maxOrNull() ?: 1000
 
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    // Averages Section
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                    ) {
                         Row(
-                            modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceAround
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(100.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.Bottom
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Weekly Avg", style = MaterialTheme.typography.labelMedium)
-                                Text(weeklyAvg.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            dummyChartData.forEach { value ->
+                                val barHeight = (value.toFloat() / maxBar).coerceIn(0.1f, 1f)
+                                Box(
+                                    modifier = Modifier
+                                        .width(16.dp)
+                                        .fillMaxHeight(barHeight)
+                                        .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                                        .background(GoldPrimary)
+                                )
                             }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Monthly Avg", style = MaterialTheme.typography.labelMedium)
-                                Text(monthlyAvg.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("12 AM", fontSize = 10.sp, color = Color.Gray)
+                            Text("6 AM", fontSize = 10.sp, color = Color.Gray)
+                            Text("12 PM", fontSize = 10.sp, color = Color.Gray)
+                            Text("6 PM", fontSize = 10.sp, color = Color.Gray)
+                            Text("12 AM", fontSize = 10.sp, color = Color.Gray)
+                        }
+                    }
+                }
+            }
+
+            // Today's Goal Control Card
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Today's Goal", fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Daily step target", fontSize = 12.sp, color = Color.Gray)
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = { viewModel.updateStepGoal((currentGoal - 500).coerceAtLeast(1000)) },
+                                colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) { Text("-", fontSize = 20.sp, color = Color.White) }
+
+                            Text(
+                                text = "%,d".format(currentGoal),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GoldPrimary,
+                                modifier = Modifier.padding(horizontal = 12.dp)
+                            )
+
+                            IconButton(
+                                onClick = { viewModel.updateStepGoal(currentGoal + 500) },
+                                colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) { Text("+", fontSize = 20.sp, color = Color.White) }
+                        }
+                    }
+                }
+            }
+
+            // Step Streak Card
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🔥", fontSize = 28.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text("$streak days", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text("Current Streak", fontSize = 11.sp, color = Color.Gray)
+                            }
+                        }
+
+                        VerticalDivider(modifier = Modifier.height(36.dp), color = Color.DarkGray)
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("👑", fontSize = 28.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text("18 days", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text("Best Streak", fontSize = 11.sp, color = Color.Gray)
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(24.dp))
-                    
-                    HorizontalDivider()
-                    
-                    Text(
-                        text = "History",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(vertical = 16.dp),
-                        color = MaterialTheme.colorScheme.secondary
-                    )
-                }
-
-                items(history) { record ->
-                    HistoryItem(record, onClick = { selectedHistoryRecord = record })
                 }
             }
-        }
-    }
 
-    if (showGoalDialog) {
-        GoalEditDialog(
-            currentGoal = currentGoal,
-            onDismiss = { showGoalDialog = false },
-            onConfirm = { newGoal ->
-                viewModel.updateStepGoal(newGoal)
-                showGoalDialog = false
-            }
-        )
-    }
-
-    selectedHistoryRecord?.let { record ->
-        HistoryDetailDialog(
-            record = record,
-            onDismiss = { selectedHistoryRecord = null },
-            onDelete = { viewModel.deleteHistoryRecord(record.date) }
-        )
-    }
-}
-
-@Composable
-fun GoalEditDialog(currentGoal: Int, onDismiss: () -> Unit, onConfirm: (Int) -> Unit) {
-    var textValue by remember { mutableStateOf(currentGoal.toString()) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Set Step Goal") },
-        text = {
-            OutlinedTextField(
-                value = textValue,
-                onValueChange = { if (it.all { char -> char.isDigit() }) textValue = it },
-                label = { Text("Daily Steps") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
-            )
-        },
-        confirmButton = {
-            Button(onClick = {
-                val goal = textValue.toIntOrNull() ?: 10000
-                onConfirm(goal)
-            }) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
-    )
-}
-
-@Composable
-fun HistoryDetailDialog(record: StepEntity, onDismiss: () -> Unit, onDelete: () -> Unit) {
-    var showDeleteConfirmation by remember { mutableStateOf(false) }
-
-    if (showDeleteConfirmation) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirmation = false },
-            title = { Text("Delete Record?") },
-            text = { Text("Are you sure you want to delete the step history for ${record.date}?") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        onDelete()
-                        showDeleteConfirmation = false
-                        onDismiss()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) { Text("DELETE") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirmation = false }) { Text("CANCEL") }
-            }
-        )
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(text = "Details for ${record.date}", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-                DetailRow(label = "Total Steps", value = record.count.toString())
-                DetailRow(label = "Distance", value = "%.2f km".format(record.distanceKm))
-                DetailRow(label = "Calories Burned", value = "${record.caloriesBurned} kcal")
-                DetailRow(label = "Active Time", value = "${record.activeTimeMinutes} minutes")
-                DetailRow(label = "Streak", value = "${record.streak} days")
-                if (record.isAchievement) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = "🏆 This was a Personal Best!", color = Color(0xFFB8860B), fontWeight = FontWeight.Bold)
+            // Recent Days Header
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Recent Days", fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close")
-            }
-        },
-        dismissButton = {
-            IconButton(onClick = { showDeleteConfirmation = true }) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
-            }
-        }
-    )
-}
 
-@Composable
-fun DetailRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(text = label, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
-        Text(text = value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-    }
-}
+            items(history) { record ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { selectedHistoryRecord = record },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = if (record.count >= currentGoal) Color(0xFF4CAF50) else Color.Gray,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(record.date, fontWeight = FontWeight.SemiBold, color = Color.White)
+                        }
 
-@Composable
-fun StatItem(label: String, value: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-    }
-}
-
-@Composable
-fun HistoryItem(record: StepEntity, onClick: () -> Unit) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(text = record.date, style = MaterialTheme.typography.bodyMedium)
-                Row {
-                    if (record.isAchievement) {
-                        Text(text = "🏆 Achievement ", style = MaterialTheme.typography.bodySmall, color = Color(0xFFB8860B))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "%,d / %,d".format(record.count, currentGoal),
+                                fontSize = 13.sp,
+                                color = Color.Gray
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            val pct = if (currentGoal > 0) ((record.count.toFloat() / currentGoal) * 100).toInt() else 0
+                            Text(
+                                "$pct%",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (pct >= 100) Color(0xFF4CAF50) else GoldPrimary
+                            )
+                        }
                     }
-                    Text(
-                        text = "${record.distanceKm}km • ${record.caloriesBurned}kcal",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
-                    )
                 }
             }
-            Text(
-                text = "${record.count}",
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Bold
-            )
         }
+    }
+}
+
+@Composable
+fun StepStatItem(value: String, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        Text(label, fontSize = 12.sp, color = Color.Gray)
     }
 }

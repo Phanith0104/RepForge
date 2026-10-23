@@ -1,6 +1,7 @@
 package com.repforge.ui.profile
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -8,10 +9,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cancel
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
@@ -19,15 +20,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.repforge.ui.auth.AuthViewModel
+import com.repforge.ui.theme.GoldPrimary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,7 +40,7 @@ fun ProfileScreen(viewModel: AuthViewModel = hiltViewModel()) {
     val isRefreshing by viewModel.isLoading.collectAsState()
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
-    val avatarSize = (screenWidth * 0.35f).coerceIn(100.dp, 200.dp)
+    val avatarSize = (screenWidth * 0.28f).coerceIn(80.dp, 160.dp)
 
     var isEditing by remember { mutableStateOf(false) }
     var nameInput by remember { mutableStateOf("") }
@@ -47,8 +51,8 @@ fun ProfileScreen(viewModel: AuthViewModel = hiltViewModel()) {
         user?.let { u ->
             if (!isEditing) {
                 nameInput = u.name
-                heightInput = if (u.height > 0) u.height.toString() else ""
-                weightInput = if (u.weight > 0) u.weight.toString() else ""
+                heightInput = if (u.height > 0) u.height.toString() else "175"
+                weightInput = if (u.weight > 0) u.weight.toString() else "69"
             }
         }
     }
@@ -61,171 +65,210 @@ fun ProfileScreen(viewModel: AuthViewModel = hiltViewModel()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                text = if (isEditing) "Edit Profile" else "My Profile",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (isEditing) "Edit Profile" else "Profile",
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
+                )
+                IconButton(onClick = {}) {
+                    Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.White)
+                }
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             user?.let { u ->
-                Box(
-                    modifier = Modifier
-                        .size(avatarSize)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center
+                // Avatar & User Details
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (u.photoUrl != null) {
-                        AsyncImage(
-                            model = u.photoUrl,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
+                    Box(
+                        modifier = Modifier
+                            .size(avatarSize)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (u.photoUrl != null) {
+                            AsyncImage(
+                                model = u.photoUrl,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Person,
+                                contentDescription = null,
+                                modifier = Modifier.size(avatarSize * 0.6f),
+                                tint = GoldPrimary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (u.name.isNotBlank()) u.name else "A. Chandan Teja",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
                         )
-                    } else {
-                        Icon(
-                            Icons.Default.Person,
-                            contentDescription = null,
-                            modifier = Modifier.size(avatarSize * 0.6f),
-                            tint = MaterialTheme.colorScheme.primary
+                        Text(
+                            text = "250160226720",
+                            fontSize = 12.sp,
+                            color = Color.Gray
                         )
+                        Text(
+                            text = "Fitness Enthusiast",
+                            fontSize = 12.sp,
+                            color = GoldPrimary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = {
+                                nameInput = u.name
+                                heightInput = if (u.height > 0) u.height.toString() else "175"
+                                weightInput = if (u.weight > 0) u.weight.toString() else "69"
+                                isEditing = !isEditing
+                            },
+                            modifier = Modifier.height(36.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                            shape = RoundedCornerShape(18.dp)
+                        ) {
+                            Text(if (isEditing) "Cancel" else "Edit Profile", fontSize = 12.sp)
+                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
 
                 if (!isEditing) {
-                    // View Mode
-                    ProfileItem(label = "Name", value = u.name)
-                    if (!u.isGuest) {
-                        ProfileItem(label = "Email", value = u.email)
+                    // Body Measurements Card
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceAround
+                        ) {
+                            val h = if (u.height > 0) u.height else 175f
+                            val w = if (u.weight > 0) u.weight else 69f
+                            val hM = h / 100f
+                            val bmi = if (hM > 0) w / (hM * hM) else 22.5f
+
+                            MeasurementItem("Height", "%.0f cm".format(h))
+                            VerticalDivider(modifier = Modifier.height(36.dp), color = Color.DarkGray)
+                            MeasurementItem("Weight", "%.0f kg".format(w))
+                            VerticalDivider(modifier = Modifier.height(36.dp), color = Color.DarkGray)
+                            MeasurementItem("BMI", "%.1f\n(Healthy)".format(bmi))
+                        }
                     }
-                    ProfileItem(label = "Age", value = "${u.age} years")
-                    ProfileItem(label = "Gender", value = u.gender)
-                    ProfileItem(label = "Height", value = if (u.height > 0) "%.1f cm".format(u.height) else "Not set")
-                    ProfileItem(label = "Weight", value = if (u.weight > 0) "%.1f kg".format(u.weight) else "Not set")
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    BmiDisplayCard(heightCm = u.height, weightKg = u.weight)
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    Button(
-                        onClick = {
-                            nameInput = u.name
-                            heightInput = if (u.height > 0) u.height.toString() else ""
-                            weightInput = if (u.weight > 0) u.weight.toString() else ""
-                            isEditing = true
-                        },
+                    // Settings & Preferences List
+                    Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(16.dp)
                     ) {
-                        Icon(Icons.Default.Edit, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Edit Profile")
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            ProfileSettingRow("Fitness Goal", "Gain Muscle", Icons.Default.AddTask)
+                            ProfileSettingRow("Daily Step Target", "8,000 steps", Icons.AutoMirrored.Filled.DirectionsWalk)
+                            ProfileSettingRow("Units", "Metric (kg, cm)", Icons.Default.Straighten)
+                            ProfileSettingRow("Notifications", "On", Icons.Default.Notifications)
+                            ProfileSettingRow("Account & Security", "", Icons.Default.Shield)
+                            ProfileSettingRow("Sync with Cloud", "Synced", Icons.Default.CloudDone)
+                        }
                     }
                 } else {
-                    // Edit Mode
-                    OutlinedTextField(
-                        value = nameInput,
-                        onValueChange = { nameInput = it },
-                        label = { Text("Full Name") },
+                    // Edit Profile Fields
+                    Card(
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    OutlinedTextField(
-                        value = heightInput,
-                        onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) heightInput = it },
-                        label = { Text("Height (cm)") },
-                        placeholder = { Text("e.g. 170") },
-                        modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    OutlinedTextField(
-                        value = weightInput,
-                        onValueChange = { if (it.all { c -> c.isDigit() || c == '.' }) weightInput = it },
-                        label = { Text("Weight (kg)") },
-                        placeholder = { Text("e.g. 70") },
-                        modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    // Live Calculated BMI
-                    val liveHeight = heightInput.toFloatOrNull() ?: 0f
-                    val liveWeight = weightInput.toFloatOrNull() ?: 0f
-                    BmiDisplayCard(heightCm = liveHeight, weightKg = liveWeight)
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    val isInputValid = nameInput.isNotBlank() && (heightInput.toFloatOrNull() ?: 0f) > 0f && (weightInput.toFloatOrNull() ?: 0f) > 0f
-
-                    Button(
-                        onClick = {
-                            val hFloat = heightInput.toFloatOrNull() ?: 0f
-                            val wFloat = weightInput.toFloatOrNull() ?: 0f
-                            viewModel.updateProfile(
-                                name = nameInput.trim(),
-                                age = u.age,
-                                gender = u.gender,
-                                phoneNumber = u.phoneNumber,
-                                weight = wFloat,
-                                height = hFloat
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedTextField(
+                                value = nameInput,
+                                onValueChange = { nameInput = it },
+                                label = { Text("Full Name") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
                             )
-                            isEditing = false
-                        },
-                        enabled = isInputValid,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Save Changes")
-                    }
+                            OutlinedTextField(
+                                value = heightInput,
+                                onValueChange = { if (it.all { c -> (c.isDigit() || c == '.') }) heightInput = it },
+                                label = { Text("Height (cm)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = weightInput,
+                                onValueChange = { if (it.all { c -> (c.isDigit() || c == '.') }) weightInput = it },
+                                label = { Text("Weight (kg)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                singleLine = true
+                            )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
 
-                    OutlinedButton(
-                        onClick = { isEditing = false },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.Cancel, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Cancel")
+                            Button(
+                                onClick = {
+                                    viewModel.updateProfile(
+                                        name = nameInput.trim(),
+                                        age = u.age,
+                                        gender = u.gender,
+                                        phoneNumber = u.phoneNumber,
+                                        weight = weightInput.toFloatOrNull() ?: u.weight,
+                                        height = heightInput.toFloatOrNull() ?: u.height
+                                    )
+                                    isEditing = false
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary, contentColor = Color.Black),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Save Changes", fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.height(24.dp))
 
-            if (!isEditing) {
+                // Sign Out Button
                 Button(
                     onClick = { viewModel.logout() },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935), contentColor = Color.White),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Logout")
+                    Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Sign Out", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -233,94 +276,40 @@ fun ProfileScreen(viewModel: AuthViewModel = hiltViewModel()) {
 }
 
 @Composable
-fun BmiDisplayCard(heightCm: Float, weightKg: Float) {
-    if (heightCm > 0f && weightKg > 0f) {
-        val heightInMeters = heightCm / 100f
-        val bmi = weightKg / (heightInMeters * heightInMeters)
-        val (bmiCategory, categoryColor) = when {
-            bmi < 18.5f -> "Underweight" to Color(0xFF03A9F4) // Blue
-            bmi < 25f -> "Healthy Weight" to Color(0xFF4CAF50) // Green
-            bmi < 30f -> "Overweight" to Color(0xFFFF9800) // Orange
-            else -> "Obese" to Color(0xFFF44336) // Red
-        }
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = categoryColor.copy(alpha = 0.1f)),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Body Mass Index (BMI)",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "%.1f".format(bmi),
-                    fontSize = 44.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = categoryColor
-                )
-                Text(
-                    text = bmiCategory,
-                    fontWeight = FontWeight.Bold,
-                    color = categoryColor,
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "* BMI categories are standard adult guidelines and not a medical diagnosis.",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    } else {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Body Mass Index (BMI)",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "BMI unavailable",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.secondary
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Please enter valid positive values for height and weight.",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
+fun MeasurementItem(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, fontSize = 12.sp, color = Color.Gray)
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = GoldPrimary, textAlign = TextAlign.Center)
     }
 }
 
 @Composable
-fun ProfileItem(label: String, value: String) {
+fun ProfileSettingRow(
+    title: String,
+    subtitle: String,
+    icon: ImageVector
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .clickable { }
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(text = label, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.secondary)
-        Text(text = value, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = GoldPrimary, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (subtitle.isNotBlank()) {
+                Text(subtitle, fontSize = 12.sp, color = Color.Gray)
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(14.dp))
+        }
     }
 }

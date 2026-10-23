@@ -213,7 +213,7 @@ fun CalisthenicsScreen(
                             Text("Completed", color = Color.White, modifier = Modifier.padding(4.dp))
                         }
                     }
-                    if (!log.notes.isNull_or_blank()) {
+                    if (!log.notes.isNullOrBlank()) {
                         Text("Notes: ${log.notes}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                     }
                 }
@@ -319,9 +319,7 @@ fun CalisthenicsScreen(
     }
 }
 
-private fun String?.isNull_or_blank(): Boolean {
-    return this == null || this.trim().isEmpty()
-}
+
 
 @Composable
 fun CalisthenicsHistoryCard(
