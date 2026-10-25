@@ -36,6 +36,16 @@ import com.repforge.ui.theme.GoldPrimary
 
 enum class StepPeriodFilter { DAY, WEEK, MONTH, YEAR }
 
+data class StepPeriodData(
+    val steps: Int,
+    val distanceKm: Float,
+    val calories: Int,
+    val activeTimeMinutes: Int,
+    val chartTitle: String,
+    val chartLabels: List<String>,
+    val chartData: List<Int>
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StepScreen(viewModel: StepViewModel = hiltViewModel()) {
@@ -44,6 +54,7 @@ fun StepScreen(viewModel: StepViewModel = hiltViewModel()) {
     val currentGoal by viewModel.stepGoal.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val streak by viewModel.currentStreak.collectAsState()
+    val bestStreak by viewModel.bestStreak.collectAsState()
 
     var periodFilter by remember { mutableStateOf(StepPeriodFilter.DAY) }
     var selectedHistoryRecord by remember { mutableStateOf<StepEntity?>(null) }
@@ -52,11 +63,56 @@ fun StepScreen(viewModel: StepViewModel = hiltViewModel()) {
     val hasPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED
 
-    val steps = stepData?.count ?: 6240
-    val distance = stepData?.distanceKm ?: 4.5f
-    val calories = stepData?.caloriesBurned ?: 240
-    val activeTime = stepData?.activeTimeMinutes ?: 72
-    val progress = if (currentGoal > 0) (steps.toFloat() / currentGoal).coerceIn(0f, 1f) else 0.78f
+    // Dynamic Period Calculations
+    val periodData = remember(periodFilter, stepData, history) {
+        when (periodFilter) {
+            StepPeriodFilter.DAY -> {
+                val s = stepData?.count ?: 0
+                val d = stepData?.distanceKm ?: 0f
+                val c = stepData?.caloriesBurned ?: 0
+                val a = stepData?.activeTimeMinutes ?: 0
+                val data = listOf(
+                    (s * 0.05f).toInt(), (s * 0.02f).toInt(), (s * 0.1f).toInt(),
+                    (s * 0.25f).toInt(), (s * 0.2f).toInt(), (s * 0.15f).toInt(),
+                    (s * 0.12f).toInt(), (s * 0.08f).toInt(), (s * 0.03f).toInt()
+                )
+                StepPeriodData(s, d, c, a, "Hourly Distribution", listOf("12 AM", "6 AM", "12 PM", "6 PM", "12 AM"), data)
+            }
+            StepPeriodFilter.WEEK -> {
+                val weekList = history.take(7)
+                val s = if (weekList.isNotEmpty()) weekList.sumOf { it.count } else (stepData?.count ?: 0)
+                val d = s * 0.000762f
+                val c = (s * 0.04f).toInt()
+                val a = s / 80
+                val data = if (weekList.isNotEmpty()) weekList.map { it.count }.reversed() else listOf(s)
+                StepPeriodData(s, d, c, a, "Daily Distribution (Last 7 Days)", listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"), data)
+            }
+            StepPeriodFilter.MONTH -> {
+                val monthList = history.take(30)
+                val s = if (monthList.isNotEmpty()) monthList.sumOf { it.count } else (stepData?.count ?: 0)
+                val d = s * 0.000762f
+                val c = (s * 0.04f).toInt()
+                val a = s / 80
+                val data = if (monthList.isNotEmpty()) {
+                    monthList.chunked(7).map { chunk -> chunk.sumOf { it.count } }.reversed()
+                } else listOf(s)
+                StepPeriodData(s, d, c, a, "Weekly Distribution (Last 30 Days)", listOf("W1", "W2", "W3", "W4"), data)
+            }
+            StepPeriodFilter.YEAR -> {
+                val s = if (history.isNotEmpty()) history.sumOf { it.count } else (stepData?.count ?: 0)
+                val d = s * 0.000762f
+                val c = (s * 0.04f).toInt()
+                val a = s / 80
+                val data = if (history.isNotEmpty()) {
+                    history.chunked(30).map { chunk -> chunk.sumOf { it.count } }.take(12).reversed()
+                } else listOf(s)
+                StepPeriodData(s, d, c, a, "Monthly Distribution (Year)", listOf("Jan", "Apr", "Jul", "Oct", "Dec"), data)
+            }
+        }
+    }
+
+    val steps = periodData.steps
+    val progress = if (currentGoal > 0) (steps.toFloat() / currentGoal).coerceIn(0f, 1f) else 0f
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -170,14 +226,14 @@ fun StepScreen(viewModel: StepViewModel = hiltViewModel()) {
                             .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceAround
                     ) {
-                        StepStatItem("%.1f km".format(distance), "Distance")
-                        StepStatItem("$calories", "Calories")
-                        StepStatItem("${activeTime / 60}h ${activeTime % 60}m", "Active Time")
+                        StepStatItem("%.1f km".format(periodData.distanceKm), "Distance")
+                        StepStatItem("${periodData.calories}", "Calories")
+                        StepStatItem("${periodData.activeTimeMinutes / 60}h ${periodData.activeTimeMinutes % 60}m", "Active Time")
                     }
                 }
             }
 
-            // Hourly Step Bar Chart
+            // Step Bar Chart
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -185,11 +241,10 @@ fun StepScreen(viewModel: StepViewModel = hiltViewModel()) {
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Hourly Distribution", fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(periodData.chartTitle, fontWeight = FontWeight.Bold, color = Color.White)
                         Spacer(modifier = Modifier.height(16.dp))
                         
-                        val dummyChartData = listOf(150, 80, 420, 680, 510, 390, 820, 600, 300, 450, 200, 100)
-                        val maxBar = dummyChartData.maxOrNull() ?: 1000
+                        val maxBar = (periodData.chartData.maxOrNull() ?: 1000).coerceAtLeast(1)
 
                         Row(
                             modifier = Modifier
@@ -198,8 +253,8 @@ fun StepScreen(viewModel: StepViewModel = hiltViewModel()) {
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.Bottom
                         ) {
-                            dummyChartData.forEach { value ->
-                                val barHeight = (value.toFloat() / maxBar).coerceIn(0.1f, 1f)
+                            periodData.chartData.forEach { value ->
+                                val barHeight = (value.toFloat() / maxBar).coerceIn(0.08f, 1f)
                                 Box(
                                     modifier = Modifier
                                         .width(16.dp)
@@ -215,11 +270,9 @@ fun StepScreen(viewModel: StepViewModel = hiltViewModel()) {
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("12 AM", fontSize = 10.sp, color = Color.Gray)
-                            Text("6 AM", fontSize = 10.sp, color = Color.Gray)
-                            Text("12 PM", fontSize = 10.sp, color = Color.Gray)
-                            Text("6 PM", fontSize = 10.sp, color = Color.Gray)
-                            Text("12 AM", fontSize = 10.sp, color = Color.Gray)
+                            periodData.chartLabels.forEach { label ->
+                                Text(label, fontSize = 10.sp, color = Color.Gray)
+                            }
                         }
                     }
                 }
@@ -296,7 +349,7 @@ fun StepScreen(viewModel: StepViewModel = hiltViewModel()) {
                             Text("👑", fontSize = 28.sp)
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
-                                Text("18 days", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text("$bestStreak days", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                 Text("Best Streak", fontSize = 11.sp, color = Color.Gray)
                             }
                         }

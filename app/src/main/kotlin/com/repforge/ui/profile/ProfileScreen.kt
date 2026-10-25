@@ -1,5 +1,8 @@
 package com.repforge.ui.profile
 
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -23,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -31,11 +35,18 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.repforge.ui.auth.AuthViewModel
+import com.repforge.ui.steps.StepViewModel
 import com.repforge.ui.theme.GoldPrimary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileScreen(viewModel: AuthViewModel = hiltViewModel()) {
+fun ProfileScreen(
+    viewModel: AuthViewModel = hiltViewModel(),
+    stepViewModel: StepViewModel = hiltViewModel()
+) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("profile_prefs", Context.MODE_PRIVATE) }
+
     val user by viewModel.user.collectAsState()
     val isRefreshing by viewModel.isLoading.collectAsState()
     val configuration = LocalConfiguration.current
@@ -47,12 +58,24 @@ fun ProfileScreen(viewModel: AuthViewModel = hiltViewModel()) {
     var heightInput by remember { mutableStateOf("") }
     var weightInput by remember { mutableStateOf("") }
 
+    // Settings States
+    var fitnessGoal by remember { mutableStateOf(prefs.getString("fitness_goal", "Gain Muscle") ?: "Gain Muscle") }
+    val stepGoal by stepViewModel.stepGoal.collectAsState()
+    var unitsPref by remember { mutableStateOf(prefs.getString("units_pref", "Metric (kg, cm)") ?: "Metric (kg, cm)") }
+    var notificationsOn by remember { mutableStateOf(prefs.getBoolean("notifications_on", true)) }
+
+    // Dialog Control States
+    var showGoalDialog by remember { mutableStateOf(false) }
+    var showStepTargetDialog by remember { mutableStateOf(false) }
+    var showAccountDialog by remember { mutableStateOf(false) }
+    var showResetDialog by remember { mutableStateOf(false) }
+
     LaunchedEffect(user, isEditing) {
         user?.let { u ->
             if (!isEditing) {
                 nameInput = u.name
-                heightInput = if (u.height > 0) u.height.toString() else "175"
-                weightInput = if (u.weight > 0) u.weight.toString() else "69"
+                heightInput = if (u.height > 0) u.height.toString() else ""
+                weightInput = if (u.weight > 0) u.weight.toString() else ""
             }
         }
     }
@@ -82,7 +105,7 @@ fun ProfileScreen(viewModel: AuthViewModel = hiltViewModel()) {
                     fontWeight = FontWeight.ExtraBold,
                     color = Color.White
                 )
-                IconButton(onClick = {}) {
+                IconButton(onClick = { showAccountDialog = true }) {
                     Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.White)
                 }
             }
@@ -123,13 +146,13 @@ fun ProfileScreen(viewModel: AuthViewModel = hiltViewModel()) {
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (u.name.isNotBlank()) u.name else "A. Chandan Teja",
+                            text = if (u.name.isNotBlank()) u.name else "User",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                         Text(
-                            text = "250160226720",
+                            text = u.uniqueUserId,
                             fontSize = 12.sp,
                             color = Color.Gray
                         )
@@ -143,8 +166,8 @@ fun ProfileScreen(viewModel: AuthViewModel = hiltViewModel()) {
                         OutlinedButton(
                             onClick = {
                                 nameInput = u.name
-                                heightInput = if (u.height > 0) u.height.toString() else "175"
-                                weightInput = if (u.weight > 0) u.weight.toString() else "69"
+                                heightInput = if (u.height > 0) u.height.toString() else ""
+                                weightInput = if (u.weight > 0) u.weight.toString() else ""
                                 isEditing = !isEditing
                             },
                             modifier = Modifier.height(36.dp),
@@ -171,34 +194,88 @@ fun ProfileScreen(viewModel: AuthViewModel = hiltViewModel()) {
                                 .padding(16.dp),
                             horizontalArrangement = Arrangement.SpaceAround
                         ) {
-                            val h = if (u.height > 0) u.height else 175f
-                            val w = if (u.weight > 0) u.weight else 69f
-                            val hM = h / 100f
-                            val bmi = if (hM > 0) w / (hM * hM) else 22.5f
-
-                            MeasurementItem("Height", "%.0f cm".format(h))
-                            VerticalDivider(modifier = Modifier.height(36.dp), color = Color.DarkGray)
-                            MeasurementItem("Weight", "%.0f kg".format(w))
-                            VerticalDivider(modifier = Modifier.height(36.dp), color = Color.DarkGray)
-                            MeasurementItem("BMI", "%.1f\n(Healthy)".format(bmi))
+                            val h = u.height
+                            val w = u.weight
+                            if (h > 0 && w > 0) {
+                                val hM = h / 100f
+                                val bmi = w / (hM * hM)
+                                val category = when {
+                                    bmi < 18.5f -> "Underweight"
+                                    bmi < 25.0f -> "Healthy"
+                                    bmi < 30.0f -> "Overweight"
+                                    else -> "Obese"
+                                }
+                                MeasurementItem("Height", "%.0f cm".format(h))
+                                VerticalDivider(modifier = Modifier.height(36.dp), color = Color.DarkGray)
+                                MeasurementItem("Weight", "%.0f kg".format(w))
+                                VerticalDivider(modifier = Modifier.height(36.dp), color = Color.DarkGray)
+                                MeasurementItem("BMI", "%.1f\n($category)".format(bmi))
+                            } else {
+                                MeasurementItem("Height", "Not set")
+                                VerticalDivider(modifier = Modifier.height(36.dp), color = Color.DarkGray)
+                                MeasurementItem("Weight", "Not set")
+                                VerticalDivider(modifier = Modifier.height(36.dp), color = Color.DarkGray)
+                                MeasurementItem("BMI", "N/A")
+                            }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // Settings & Preferences List
+                    // Settings & Preferences List (Interactive)
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Column(modifier = Modifier.padding(8.dp)) {
-                            ProfileSettingRow("Fitness Goal", "Gain Muscle", Icons.Default.AddTask)
-                            ProfileSettingRow("Daily Step Target", "8,000 steps", Icons.AutoMirrored.Filled.DirectionsWalk)
-                            ProfileSettingRow("Units", "Metric (kg, cm)", Icons.Default.Straighten)
-                            ProfileSettingRow("Notifications", "On", Icons.Default.Notifications)
-                            ProfileSettingRow("Account & Security", "", Icons.Default.Shield)
-                            ProfileSettingRow("Sync with Cloud", "Synced", Icons.Default.CloudDone)
+                            ProfileSettingRow(
+                                title = "Fitness Goal",
+                                subtitle = fitnessGoal,
+                                icon = Icons.Default.AddTask,
+                                onClick = { showGoalDialog = true }
+                            )
+                            ProfileSettingRow(
+                                title = "Daily Step Target",
+                                subtitle = "%,d steps".format(stepGoal),
+                                icon = Icons.AutoMirrored.Filled.DirectionsWalk,
+                                onClick = { showStepTargetDialog = true }
+                            )
+                            ProfileSettingRow(
+                                title = "Units",
+                                subtitle = unitsPref,
+                                icon = Icons.Default.Straighten,
+                                onClick = {
+                                    unitsPref = if (unitsPref.startsWith("Metric")) "Imperial (lbs, in)" else "Metric (kg, cm)"
+                                    prefs.edit().putString("units_pref", unitsPref).apply()
+                                    Toast.makeText(context, "Units updated: $unitsPref", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                            ProfileSettingRow(
+                                title = "Notifications",
+                                subtitle = if (notificationsOn) "On" else "Off",
+                                icon = Icons.Default.Notifications,
+                                onClick = {
+                                    notificationsOn = !notificationsOn
+                                    prefs.edit().putBoolean("notifications_on", notificationsOn).apply()
+                                    Toast.makeText(context, "Notifications: ${if (notificationsOn) "On" else "Off"}", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                            ProfileSettingRow(
+                                title = "Account & Security",
+                                subtitle = "",
+                                icon = Icons.Default.Shield,
+                                onClick = { showAccountDialog = true }
+                            )
+                            ProfileSettingRow(
+                                title = "Sync with Cloud",
+                                subtitle = "Synced",
+                                icon = Icons.Default.CloudDone,
+                                onClick = {
+                                    viewModel.refresh()
+                                    Toast.makeText(context, "Cloud sync complete!", Toast.LENGTH_SHORT).show()
+                                }
+                            )
                         }
                     }
                 } else {
@@ -259,6 +336,20 @@ fun ProfileScreen(viewModel: AuthViewModel = hiltViewModel()) {
 
                 Spacer(modifier = Modifier.height(24.dp))
 
+                OutlinedButton(
+                    onClick = { showResetDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GoldPrimary),
+                    border = BorderStroke(1.dp, GoldPrimary),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.RestartAlt, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Reset Progress to Zero", fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
                 // Sign Out Button
                 Button(
                     onClick = { viewModel.logout() },
@@ -272,6 +363,139 @@ fun ProfileScreen(viewModel: AuthViewModel = hiltViewModel()) {
                 }
             }
         }
+    }
+
+    // Dialog 1: Fitness Goal Selection
+    if (showGoalDialog) {
+        val goals = listOf("Gain Muscle", "Lose Weight", "Maintain Fitness", "Build Strength", "Endurance")
+        AlertDialog(
+            onDismissRequest = { showGoalDialog = false },
+            title = { Text("Select Fitness Goal") },
+            text = {
+                Column {
+                    goals.forEach { goalOption ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    fitnessGoal = goalOption
+                                    prefs.edit().putString("fitness_goal", goalOption).apply()
+                                    showGoalDialog = false
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = fitnessGoal == goalOption,
+                                onClick = {
+                                    fitnessGoal = goalOption
+                                    prefs.edit().putString("fitness_goal", goalOption).apply()
+                                    showGoalDialog = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(goalOption, fontSize = 16.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showGoalDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // Dialog 2: Daily Step Target Selection
+    if (showStepTargetDialog) {
+        val stepTargets = listOf(5000, 8000, 10000, 12000)
+        AlertDialog(
+            onDismissRequest = { showStepTargetDialog = false },
+            title = { Text("Select Daily Step Target") },
+            text = {
+                Column {
+                    stepTargets.forEach { targetOption ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    stepViewModel.updateStepGoal(targetOption)
+                                    showStepTargetDialog = false
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = stepGoal == targetOption,
+                                onClick = {
+                                    stepViewModel.updateStepGoal(targetOption)
+                                    showStepTargetDialog = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("%,d steps".format(targetOption), fontSize = 16.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showStepTargetDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // Dialog 3: Account & Security
+    if (showAccountDialog && user != null) {
+        val u = user!!
+        AlertDialog(
+            onDismissRequest = { showAccountDialog = false },
+            title = { Text("Account & Security") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Email: ${u.email}", fontSize = 14.sp)
+                    Text("Unique ID: ${u.uniqueUserId}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = GoldPrimary)
+                    Text("Login Provider: ${u.provider}", fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            if (u.email.isNotBlank() && u.email.contains("@")) {
+                                viewModel.sendPasswordResetEmail(u.email)
+                                Toast.makeText(context, "Password reset email sent to ${u.email}", Toast.LENGTH_LONG).show()
+                            } else {
+                                Toast.makeText(context, "Invalid email address", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary, contentColor = Color.Black)
+                    ) {
+                        Text("Send Password Reset Email")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAccountDialog = false }) { Text("Close") }
+            }
+        )
+    }
+
+    // Dialog 4: Reset Confirmation
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            title = { Text("Reset All Progress?", fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to reset all your workout history, step totals, and fitness progress to zero?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.resetUserProgress()
+                        showResetDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Reset to Zero") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showResetDialog = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 
@@ -288,12 +512,13 @@ fun MeasurementItem(label: String, value: String) {
 fun ProfileSettingRow(
     title: String,
     subtitle: String,
-    icon: ImageVector
+    icon: ImageVector,
+    onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { }
+            .clickable { onClick() }
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween

@@ -61,6 +61,10 @@ class StepViewModel @Inject constructor(
         repository.calculateCurrentStreak()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    val bestStreak: StateFlow<Int> = combine(todaySteps, stepHistory, stepGoal) { _, _, _ ->
+        repository.calculateBestStreak()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     fun updateStepGoal(newGoal: Int) {
         repository.updateStepGoal(newGoal)
         _stepGoal.value = newGoal

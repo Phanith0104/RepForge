@@ -245,4 +245,23 @@ class StepRepository @Inject constructor(
         
         return streak
     }
+
+    suspend fun calculateBestStreak(): Int {
+        val userId = getCurrentUserId()
+        val allHistory = stepDao.getAllStepsList(userId).sortedBy { it.date }
+        val stepGoal = getStepGoal()
+        var maxStreak = 0
+        var currentStreak = 0
+        for (entry in allHistory) {
+            if (entry.count >= stepGoal) {
+                currentStreak++
+                if (currentStreak > maxStreak) {
+                    maxStreak = currentStreak
+                }
+            } else {
+                currentStreak = 0
+            }
+        }
+        return maxStreak
+    }
 }

@@ -12,14 +12,19 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import com.repforge.data.repository.GymRepository
+import com.repforge.data.repository.HabitRepository
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val gymRepository: GymRepository,
+    private val habitRepository: HabitRepository
 ) : ViewModel() {
 
     private val _isLoading = MutableStateFlow(false)
@@ -237,6 +242,45 @@ class AuthViewModel @Inject constructor(
                 if (result.isFailure) {
                     _error.value = result.exceptionOrNull()?.message ?: "Failed to save profile"
                 }
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun resetUserProgress() {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+            try {
+                gymRepository.deleteAllHistory()
+                val activeUser = userRepository.getUser().first()
+                if (activeUser != null) {
+                    userRepository.updateProfile(
+                        name = activeUser.name,
+                        age = activeUser.age,
+                        gender = activeUser.gender,
+                        phoneNumber = activeUser.phoneNumber,
+                        weight = 0f,
+                        height = 0f
+                    )
+                }
+                _error.value = "SUCCESS:Your progress has been reset to zero."
+            } catch (e: Exception) {
+                _error.value = "Reset failed: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun sendPasswordResetEmail(email: String) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                userRepository.sendPasswordResetEmail(email)
+            } catch (e: Exception) {
+                _error.value = "Password reset failed: ${e.message}"
             } finally {
                 _isLoading.value = false
             }

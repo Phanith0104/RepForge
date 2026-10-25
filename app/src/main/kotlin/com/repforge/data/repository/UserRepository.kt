@@ -33,6 +33,12 @@ class UserRepository @Inject constructor(
     
     fun getAllSavedProfiles(): Flow<List<UserEntity>> = userDao.getAllUsers()
 
+    fun generateUniqueUserId(): String {
+        val prefix = "25016"
+        val suffix = (System.currentTimeMillis() % 10000000).toString().padStart(7, '0')
+        return "$prefix$suffix"
+    }
+
     fun observeAuthState(): Flow<FirebaseUser?> = callbackFlow {
         val listener = FirebaseAuth.AuthStateListener { auth ->
             trySend(auth.currentUser)
@@ -57,8 +63,10 @@ class UserRepository @Inject constructor(
             val document = firestore.collection("users").document(firebaseUser.uid).get().await()
             
             if (document.exists()) {
+                val emailVal = document.getString("email") ?: firebaseUser.email ?: firebaseUser.phoneNumber ?: "user_${firebaseUser.uid}"
                 val user = UserEntity(
-                    email = document.getString("email") ?: firebaseUser.email ?: firebaseUser.phoneNumber ?: "user_${firebaseUser.uid}",
+                    email = emailVal,
+                    uniqueUserId = document.getString("uniqueUserId") ?: "250160226720",
                     name = document.getString("name") ?: firebaseUser.displayName ?: "",
                     age = document.getLong("age")?.toInt() ?: 0,
                     gender = document.getString("gender") ?: "Male",
@@ -76,8 +84,11 @@ class UserRepository @Inject constructor(
                 Log.d(TAG, "Profile found and synced for: ${user.email}")
             } else {
                 Log.d(TAG, "No Firestore document found for UID: ${firebaseUser.uid}. This is normal for new users.")
+                val emailVal = firebaseUser.email ?: firebaseUser.phoneNumber ?: "user_${firebaseUser.uid}"
+                val assignedId = if (emailVal.contains("250160226720")) "250160226720" else generateUniqueUserId()
                 val user = UserEntity(
-                    email = firebaseUser.email ?: firebaseUser.phoneNumber ?: "user_${firebaseUser.uid}",
+                    email = emailVal,
+                    uniqueUserId = assignedId,
                     name = firebaseUser.displayName ?: "",
                     photoUrl = firebaseUser.photoUrl?.toString(),
                     provider = firebaseUser.providerData.firstOrNull()?.providerId ?: "firebase",
@@ -160,6 +171,7 @@ class UserRepository @Inject constructor(
                         "weight" to weight,
                         "height" to height,
                         "email" to user.email,
+                        "uniqueUserId" to user.uniqueUserId,
                         "photoUrl" to user.photoUrl,
                         "provider" to user.provider,
                         "isProfileComplete" to true,
@@ -253,9 +265,11 @@ class UserRepository @Inject constructor(
             }
             val firebaseUser = firebaseAuth.currentUser
             
+            val emailVal = identifier.ifBlank { firebaseUser?.email ?: firebaseUser?.phoneNumber ?: "user_$userId" }
             val user = if (doc != null && doc.exists()) {
                 UserEntity(
-                    email = doc.getString("email") ?: identifier.ifBlank { firebaseUser?.email ?: firebaseUser?.phoneNumber ?: "user_$userId" },
+                    email = doc.getString("email") ?: emailVal,
+                    uniqueUserId = doc.getString("uniqueUserId") ?: "250160226720",
                     name = doc.getString("name") ?: firebaseUser?.displayName ?: "",
                     age = doc.getLong("age")?.toInt() ?: 0,
                     gender = doc.getString("gender") ?: "Male",
@@ -270,8 +284,10 @@ class UserRepository @Inject constructor(
                     isGuest = false
                 )
             } else {
+                val assignedId = if (emailVal.contains("250160226720")) "250160226720" else generateUniqueUserId()
                 UserEntity(
-                    email = identifier.ifBlank { firebaseUser?.email ?: firebaseUser?.phoneNumber ?: "user_$userId" },
+                    email = emailVal,
+                    uniqueUserId = assignedId,
                     name = firebaseUser?.displayName ?: "",
                     photoUrl = firebaseUser?.photoUrl?.toString(),
                     provider = provider,
